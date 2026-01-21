@@ -482,6 +482,129 @@ def create_app(
             status_code=404,
         )
 
+    @app.post("/api/jobs/{job_id}/pre-identify")
+    async def pre_identify_job(job_id: int, body: IdentifyRequest) -> JSONResponse:
+        """Pre-identify a job by setting title/year without changing status.
+
+        This allows manual identification of jobs that are still in progress
+        (ripping, encoding, etc.) before they reach the REVIEW stage.
+
+        Args:
+            job_id: The ID of the job to pre-identify.
+            body: Request body containing title and optional year/tmdb_id.
+
+        Returns:
+            JSON response with success status and job details.
+        """
+        # Status values that allow pre-identification (jobs still in progress)
+        allowed_statuses = {"pending", "ripping", "ripped", "encoding", "encoded", "identifying"}
+        # Status values that do NOT allow pre-identification
+        disallowed_statuses = {"review", "moving", "complete", "failed", "archived"}
+
+        # Use database if available
+        if app.state.database is not None:
+            from dvdtoplex.database import ContentType, JobStatus
+
+            job = await app.state.database.get_job(job_id)
+            if job is None:
+                return JSONResponse(
+                    content={"detail": "Job not found"},
+                    status_code=404,
+                )
+
+            # Check if job status allows pre-identification
+            if job.status.value in disallowed_statuses:
+                return JSONResponse(
+                    content={
+                        "detail": f"Pre-identify not allowed for jobs in {job.status.value.upper()} status"
+                    },
+                    status_code=400,
+                )
+
+            # Search TMDb for additional info (tmdb_id, poster_path)
+            tmdb_id = body.tmdb_id
+            poster_path = None
+            if app.state.config and app.state.config.tmdb_api_token:
+                try:
+                    from dvdtoplex.tmdb import TMDbClient
+
+                    async with TMDbClient(app.state.config.tmdb_api_token) as tmdb:
+                        results = await tmdb.search_movie(body.title, body.year)
+                        if results:
+                            # Use first result if no tmdb_id provided
+                            if tmdb_id is None:
+                                tmdb_id = results[0].tmdb_id
+                            # Find matching result for poster_path
+                            for result in results:
+                                if result.tmdb_id == tmdb_id:
+                                    poster_path = result.poster_path
+                                    break
+                            else:
+                                # If provided tmdb_id not in results, use first result's poster
+                                poster_path = results[0].poster_path
+                except Exception as e:
+                    logger.warning(f"TMDb search failed during pre-identify: {e}")
+
+            # Update identification without changing status
+            await app.state.database.update_job_identification(
+                job_id=job_id,
+                content_type=ContentType.MOVIE,
+                title=body.title,
+                year=body.year,
+                tmdb_id=tmdb_id or 0,
+                confidence=1.0,
+                poster_path=poster_path,
+            )
+
+            return JSONResponse(
+                content={
+                    "success": True,
+                    "job_id": job_id,
+                    "identified_title": body.title,
+                    "identified_year": body.year,
+                    "tmdb_id": tmdb_id,
+                }
+            )
+
+        # Fall back to in-memory state
+        for job in app.state.jobs:
+            if job.get("id") == job_id:
+                job_status = job.get("status", "")
+
+                # Check if job status allows pre-identification
+                if job_status in disallowed_statuses:
+                    return JSONResponse(
+                        content={
+                            "success": False,
+                            "error": f"Pre-identify not allowed for jobs in {job_status} status",
+                        },
+                        status_code=400,
+                    )
+
+                # Update identification fields
+                job["identified_title"] = body.title
+                if body.year is not None:
+                    job["identified_year"] = body.year
+                if body.tmdb_id is not None:
+                    job["tmdb_id"] = body.tmdb_id
+                job["confidence"] = 1.0
+
+                # Status remains unchanged!
+                return JSONResponse(
+                    content={
+                        "success": True,
+                        "job_id": job_id,
+                        "identified_title": body.title,
+                        "identified_year": body.year,
+                        "tmdb_id": body.tmdb_id,
+                    }
+                )
+
+        return JSONResponse(
+            content={"success": False, "error": "Job not found"},
+            status_code=404,
+        )
+
     @app.post("/api/jobs/{job_id}/skip")
     async def skip_job(job_id: int) -> JSONResponse:
         """Skip a job by marking it as failed.
