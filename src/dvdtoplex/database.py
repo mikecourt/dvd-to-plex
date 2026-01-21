@@ -316,6 +316,16 @@ class Database:
         row = await cursor.fetchone()
         return self._row_to_job(row) if row else None
 
+    async def get_all_jobs(self) -> list[Job]:
+        """Get all jobs from the database.
+
+        Returns:
+            List of all jobs, ordered by ID descending.
+        """
+        cursor = await self.connection.execute("SELECT * FROM jobs ORDER BY id DESC")
+        rows = await cursor.fetchall()
+        return [self._row_to_job(row) for row in rows]
+
     async def get_jobs_by_status(self, status: JobStatus) -> list[Job]:
         """Get all jobs with a specific status.
 
