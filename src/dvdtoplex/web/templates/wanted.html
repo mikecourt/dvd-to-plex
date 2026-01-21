@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}Wanted List - DVD to Plex{% endblock %}
+
+{% block content %}
+<h1>Wanted List</h1>
+<p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+    Titles you're looking for. Great for reference when hunting at thrift stores!
+</p>
+
+<!-- Search form to add items -->
+<div class="card" style="margin-bottom: 1.5rem;">
+    <div class="card-header">
+        <span class="card-title">Add to Wanted List</span>
+    </div>
+    <form id="add-wanted-form" class="search-box" style="margin-bottom: 0;">
+        <input type="text" class="form-input" id="wanted-search" name="query" placeholder="Search TMDb for a title...">
+        <button type="submit" class="btn btn-primary">Search</button>
+    </form>
+</div>
+
+<!-- Wanted items grid -->
+{% if items %}
+<div class="grid" id="wanted-grid">
+    {% for item in items %}
+    <div class="card wanted-item" data-id="{{ item.id }}">
+        <div class="card-header">
+            <span class="card-title">{{ item.title }}</span>
+            <button class="btn btn-danger" onclick="removeWanted({{ item.id }})" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                Remove
+            </button>
+        </div>
+        <p style="color: var(--text-secondary);">
+            {% if item.year %}{{ item.year }}{% else %}Unknown Year{% endif %}
+        </p>
+        {% if item.content_type %}
+        <span class="badge badge-{{ item.content_type }}" style="margin-top: 0.5rem;">{{ item.content_type | title }}</span>
+        {% endif %}
+        {% if item.notes %}
+        <p style="margin-top: 0.75rem; font-size: 0.9rem; color: var(--text-secondary);">
+            <strong>Notes:</strong> {{ item.notes }}
+        </p>
+        {% endif %}
+        {% if item.season_info %}
+        <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--accent);">
+            {{ item.season_info }}
+        </p>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card">
+    <div class="empty-state">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+        </svg>
+        <p>Your wanted list is empty. Search for titles above to add them!</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Handle search form submission
+    const form = document.getElementById('add-wanted-form');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const query = document.getElementById('wanted-search').value.trim();
+            if (query) {
+                // Redirect to search endpoint
+                window.location.href = '/wanted/search?query=' + encodeURIComponent(query);
+            }
+        });
+    }
+
+    // Remove item from wanted list
+    async function removeWanted(id) {
+        if (!confirm('Remove this item from your wanted list?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/wanted/${id}`, {
+                method: 'DELETE',
+            });
+
+            if (response.ok) {
+                // Remove the card from the page
+                const card = document.querySelector(`[data-id="${id}"]`);
+                if (card) {
+                    card.remove();
+                }
+                // Reload if no more items
+                if (document.querySelectorAll('.wanted-item').length === 0) {
+                    window.location.reload();
+                }
+            } else {
+                alert('Failed to remove item');
+            }
+        } catch (error) {
+            console.error('Error removing item:', error);
+            alert('Failed to remove item');
+        }
+    }
+</script>
+{% endblock %}

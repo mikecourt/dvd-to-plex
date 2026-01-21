@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}Collection - DVD to Plex{% endblock %}
+
+{% block content %}
+<h1>Collection</h1>
+<p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+    Your ripped content that has been added to Plex.
+</p>
+
+<!-- Search filter -->
+<div class="search-box">
+    <input type="text" class="form-input" id="search-input" placeholder="Search collection...">
+</div>
+
+{% if items %}
+<div class="grid" id="collection-grid">
+    {% for item in items %}
+    <div class="card collection-item" data-title="{{ item.title | lower }}" data-year="{{ item.year }}">
+        <div class="card-header">
+            <span class="card-title">{{ item.title }}</span>
+            <span class="badge badge-{{ item.content_type }}">{{ item.content_type | title }}</span>
+        </div>
+        <p style="color: var(--text-secondary);">
+            {% if item.year %}{{ item.year }}{% else %}Unknown Year{% endif %}
+        </p>
+        {% if item.added_at %}
+        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.5rem;">
+            Added: {{ item.added_at }}
+        </p>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+
+<p id="no-results" style="display: none; color: var(--text-secondary); text-align: center; padding: 2rem;">
+    No items match your search.
+</p>
+{% else %}
+<div class="card">
+    <div class="empty-state">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+        </svg>
+        <p>Your collection is empty. Start ripping DVDs to build your library!</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const searchInput = document.getElementById('search-input');
+    const grid = document.getElementById('collection-grid');
+    const noResults = document.getElementById('no-results');
+
+    if (searchInput && grid) {
+        searchInput.addEventListener('input', function() {
+            const query = this.value.toLowerCase().trim();
+            const items = grid.querySelectorAll('.collection-item');
+            let visibleCount = 0;
+
+            items.forEach(function(item) {
+                const title = item.dataset.title || '';
+                const year = item.dataset.year || '';
+
+                if (title.includes(query) || year.includes(query)) {
+                    item.style.display = '';
+                    visibleCount++;
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+
+            if (noResults) {
+                noResults.style.display = visibleCount === 0 ? 'block' : 'none';
+            }
+        });
+    }
+</script>
+{% endblock %}

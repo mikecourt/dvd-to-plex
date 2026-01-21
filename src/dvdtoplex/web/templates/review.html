@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block title %}Review Queue - DVD to Plex{% endblock %}
+
+{% block content %}
+<h1>Review Queue</h1>
+<p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+    Items below need manual review due to low confidence identification.
+</p>
+
+{% if jobs %}
+<div class="grid">
+    {% for job in jobs %}
+    <div class="card" data-job-id="{{ job.id }}">
+        <div class="card-header">
+            <span class="card-title">{{ job.disc_label }}</span>
+            <span class="badge badge-review">Review</span>
+        </div>
+
+        <div class="card-body" style="display: flex; gap: 1rem;">
+            <!-- Poster -->
+            {% if job.poster_url %}
+            <div class="poster" style="flex-shrink: 0;">
+                <img src="{{ job.poster_url }}" alt="Poster" style="width: 120px; border-radius: 4px;">
+            </div>
+            {% endif %}
+
+            <div class="details" style="flex-grow: 1;">
+                <!-- Screenshots -->
+                {% if job.screenshots %}
+                <div class="screenshots" style="margin-bottom: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    {% for screenshot in job.screenshots %}
+                    <img src="{{ screenshot }}" alt="Screenshot" style="width: 100px; height: 56px; object-fit: cover; border-radius: 4px; cursor: pointer;" onclick="window.open('{{ screenshot }}', '_blank')">
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <!-- Confidence meter -->
+                <div class="confidence" style="margin-bottom: 1rem;">
+                    <span>Confidence:</span>
+                    <div class="confidence-bar">
+                        {% set confidence_pct = (job.confidence or 0) * 100 %}
+                        {% set confidence_class = 'high' if confidence_pct >= 85 else 'medium' if confidence_pct >= 50 else 'low' %}
+                        <div class="confidence-fill {{ confidence_class }}" style="width: {{ confidence_pct }}%;"></div>
+                    </div>
+                    <span>{{ "%.0f"|format(confidence_pct) }}%</span>
+                </div>
+
+                <!-- Best match -->
+                <div style="margin-bottom: 1rem;">
+                    <p style="color: var(--text-secondary); font-size: 0.9rem;">Best Match:</p>
+                    <p style="font-size: 1.1rem; font-weight: 500;">
+                        {{ job.identified_title or 'Unknown' }}
+                        {% if job.identified_year %}({{ job.identified_year }}){% endif %}
+                    </p>
+                    {% if job.content_type %}
+                    <span class="badge badge-{{ job.content_type }}">{{ job.content_type | title }}</span>
+                    {% endif %}
+                </div>
+
+                <!-- Actions -->
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button class="btn btn-success" onclick="approveJob({{ job.id }})">
+                        Approve
+                    </button>
+                    <button class="btn btn-primary" onclick="editJob({{ job.id }}, '{{ job.identified_title | default('', true) | e }}', '{{ job.identified_year | default('', true) }}')">
+                        Edit
+                    </button>
+                    <button class="btn btn-danger" onclick="skipJob({{ job.id }})">
+                        Skip
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card">
+    <div class="empty-state">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <p>No items to review. All identifications are approved!</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function approveJob(jobId) {
+        try {
+            const response = await fetch(`/api/jobs/${jobId}/approve`, {
+                method: 'POST',
+            });
+
+            if (response.ok) {
+                // Remove the card from the page
+                const card = document.querySelector(`[data-job-id="${jobId}"]`);
+                if (card) {
+                    card.remove();
+                }
+                // Reload if no more items
+                if (document.querySelectorAll('[data-job-id]').length === 0) {
+                    window.location.reload();
+                }
+            } else {
+                alert('Failed to approve job');
+            }
+        } catch (error) {
+            console.error('Error approving job:', error);
+            alert('Failed to approve job');
+        }
+    }
+
+    async function editJob(jobId, currentTitle, currentYear) {
+        // Prompt for correct title, pre-filling with current value
+        const title = prompt('Enter the correct title:', currentTitle || '');
+        if (title === null) return; // User cancelled
+        if (!title.trim()) {
+            alert('Title cannot be empty');
+            return;
+        }
+
+        // Prompt for year, pre-filling with current value
+        const yearStr = prompt('Enter the year (optional):', currentYear || '');
+        if (yearStr === null) return; // User cancelled
+
+        // Parse year if provided
+        let year = null;
+        if (yearStr.trim()) {
+            year = parseInt(yearStr.trim(), 10);
+            if (isNaN(year) || year < 1800 || year > 2100) {
+                alert('Please enter a valid year between 1800 and 2100');
+                return;
+            }
+        }
+
+        try {
+            const response = await fetch(`/api/jobs/${jobId}/identify`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    title: title.trim(),
+                    year: year,
+                }),
+            });
+
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                const errorData = await response.json().catch(() => ({}));
+                alert(errorData.detail || 'Failed to update identification');
+            }
+        } catch (error) {
+            console.error('Error updating identification:', error);
+            alert('Failed to update identification');
+        }
+    }
+
+    async function skipJob(jobId) {
+        if (!confirm('Are you sure you want to skip this item? It will be marked as failed.')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/jobs/${jobId}/skip`, {
+                method: 'POST',
+            });
+
+            if (response.ok) {
+                // Remove the card from the page
+                const card = document.querySelector(`[data-job-id="${jobId}"]`);
+                if (card) {
+                    card.remove();
+                }
+                // Reload if no more items
+                if (document.querySelectorAll('[data-job-id]').length === 0) {
+                    window.location.reload();
+                }
+            } else {
+                const data = await response.json().catch(() => ({}));
+                alert(data.detail || data.error || 'Failed to skip job');
+            }
+        } catch (error) {
+            console.error('Error skipping job:', error);
+            alert('Failed to skip job: ' + error.message);
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}DVD to Plex{% endblock %}</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-card: #0f3460;
+            --text-primary: #eaeaea;
+            --text-secondary: #a0a0a0;
+            --accent: #e94560;
+            --success: #4ecca3;
+            --warning: #ffc107;
+            --error: #e94560;
+            --info: #00b4d8;
+            --border: #2a2a4a;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        /* Navigation */
+        nav {
+            background-color: var(--bg-secondary);
+            padding: 1rem 2rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        nav ul {
+            list-style: none;
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        nav a {
+            color: var(--text-primary);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+
+        nav a:hover {
+            color: var(--accent);
+        }
+
+        nav .logo {
+            font-size: 1.25rem;
+            font-weight: bold;
+            color: var(--accent);
+        }
+
+        /* Main content */
+        main {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Cards */
+        .card {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            overflow: hidden;
+        }
+
+        .card-header {
+            background-color: var(--bg-card);
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .card-body {
+            padding: 1.5rem;
+        }
+
+        /* Toggle Switch */
+        .toggle {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+
+        .toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--bg-secondary);
+            border: 2px solid var(--border);
+            border-radius: 34px;
+            transition: 0.3s;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 4px;
+            bottom: 4px;
+            background-color: var(--text-secondary);
+            border-radius: 50%;
+            transition: 0.3s;
+        }
+
+        .toggle input:checked + .toggle-slider {
+            background-color: var(--success);
+            border-color: var(--success);
+        }
+
+        .toggle input:checked + .toggle-slider:before {
+            transform: translateX(26px);
+            background-color: white;
+        }
+
+        .toggle input:focus + .toggle-slider {
+            box-shadow: 0 0 4px var(--success);
+        }
+
+        /* Toggle with label */
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .toggle-label {
+            font-weight: 500;
+        }
+
+        .toggle-state {
+            font-size: 0.9rem;
+            font-weight: 600;
+            min-width: 40px;
+        }
+
+        .toggle-state.on {
+            color: var(--success);
+        }
+
+        .toggle-state.off {
+            color: var(--text-secondary);
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+            font-weight: 500;
+            text-decoration: none;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background-color: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: #c73e54;
+        }
+
+        .btn-secondary {
+            background-color: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--border);
+        }
+
+        .btn-success {
+            background-color: var(--success);
+            color: var(--bg-primary);
+        }
+
+        .btn-success:hover {
+            background-color: #3db389;
+        }
+
+        .btn-danger {
+            background-color: var(--error);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background-color: #c73e54;
+        }
+
+        /* Status badges */
+        .status {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            border-radius: 12px;
+        }
+
+        .status-pending {
+            background-color: var(--warning);
+            color: var(--bg-primary);
+        }
+
+        .status-ripping,
+        .status-encoding,
+        .status-identifying,
+        .status-moving {
+            background-color: var(--info);
+            color: white;
+        }
+
+        .status-ripped,
+        .status-encoded {
+            background-color: var(--success);
+            color: var(--bg-primary);
+        }
+
+        .status-review {
+            background-color: var(--warning);
+            color: var(--bg-primary);
+        }
+
+        .status-complete {
+            background-color: var(--success);
+            color: var(--bg-primary);
+        }
+
+        .status-failed {
+            background-color: var(--error);
+            color: white;
+        }
+
+        /* Content type badges */
+        .badge {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            border-radius: 4px;
+            background-color: var(--bg-card);
+            color: var(--text-secondary);
+        }
+
+        .badge-movie {
+            background-color: var(--accent);
+            color: white;
+        }
+
+        .badge-tv {
+            background-color: var(--info);
+            color: white;
+        }
+
+        /* Drive indicator */
+        .drive-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+
+        .drive-indicator.empty {
+            background-color: var(--text-secondary);
+        }
+
+        .drive-indicator.has-disc {
+            background-color: var(--success);
+        }
+
+        .drive-indicator.processing {
+            background-color: var(--warning);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            background-color: var(--bg-card);
+            font-weight: 600;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+        }
+
+        tr:hover {
+            background-color: rgba(255, 255, 255, 0.02);
+        }
+
+        /* Grid layouts */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.5rem;
+        }
+
+        @media (max-width: 768px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Utility classes */
+        .text-muted {
+            color: var(--text-secondary);
+        }
+
+        .text-success {
+            color: var(--success);
+        }
+
+        .text-warning {
+            color: var(--warning);
+        }
+
+        .text-error {
+            color: var(--error);
+        }
+
+        .mb-1 { margin-bottom: 0.5rem; }
+        .mb-2 { margin-bottom: 1rem; }
+        .mb-3 { margin-bottom: 1.5rem; }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <nav>
+        <ul>
+            <li><a href="/" class="logo">DVD to Plex</a></li>
+            <li><a href="/">Dashboard</a></li>
+            <li><a href="/review">Review Queue</a></li>
+            <li><a href="/collection">Collection</a></li>
+            <li><a href="/wanted">Wanted</a></li>
+        </ul>
+    </nav>
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

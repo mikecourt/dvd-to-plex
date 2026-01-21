@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - DVD to Plex{% endblock %}
+
+{% block content %}
+<h1 class="mb-3">Dashboard</h1>
+
+<!-- Active Mode Card -->
+<div class="card mb-3">
+    <div class="card-header">
+        <span class="card-title">Active Mode</span>
+    </div>
+    <div class="card-body">
+        <div class="toggle-container" data-active="{% if active_mode %}true{% else %}false{% endif %}">
+            <label class="toggle btn-toggle">
+                <input type="checkbox" id="active-mode-toggle" {% if active_mode %}checked{% endif %}>
+                <span class="toggle-slider"></span>
+            </label>
+            <span class="toggle-label">Automatic Processing</span>
+            <span id="active-mode-state" class="toggle-state {% if active_mode %}on{% else %}off{% endif %}">
+                {% if active_mode %}ON{% else %}OFF{% endif %}
+            </span>
+        </div>
+        <p class="text-muted" style="margin-top: 0.75rem; font-size: 0.9rem;">
+            {% if active_mode %}
+                System is actively monitoring drives and processing DVDs.
+            {% else %}
+                System is paused. Toggle on to resume automatic processing.
+            {% endif %}
+        </p>
+    </div>
+</div>
+
+<!-- Drive Status Cards -->
+<div class="grid-2 mb-3">
+    {% for drive in drives %}
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">
+                <span class="drive-indicator {% if drive.processing %}processing{% elif drive.has_disc %}has-disc{% else %}empty{% endif %}"></span>
+                {{ drive.name or 'Unknown Drive' }}
+            </span>
+        </div>
+        <div class="card-body">
+            {% if drive.has_disc %}
+                <p><strong>Disc:</strong> {{ drive.disc_label or 'Unknown Disc' }}</p>
+                {% if drive.status %}
+                    <p><strong>Status:</strong> <span class="status status-{{ drive.status|lower }}">{{ drive.status }}</span></p>
+                {% endif %}
+            {% else %}
+                <p class="text-muted">No disc inserted</p>
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="card-body">
+            <p class="text-muted">No DVD drives detected</p>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Recent Jobs Table -->
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">Recent Jobs</span>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        <table>
+            <thead>
+                <tr>
+                    <th>Disc Label</th>
+                    <th>Status</th>
+                    <th>Size</th>
+                    <th>Identified As</th>
+                    <th>Updated</th>
+                    <th style="width: 60px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in recent_jobs %}
+                <tr data-job-id="{{ job.id }}">
+                    <td>{{ job.disc_label }}</td>
+                    <td><span class="status status-{{ job.status|lower }}">{{ job.status }}</span></td>
+                    <td class="text-muted">{{ job.file_size or '--' }}</td>
+                    <td>
+                        {% if job.identified_title %}
+                            {{ job.identified_title }}
+                            {% if job.identified_year %}({{ job.identified_year }}){% endif %}
+                            {% if job.content_type == 'movie' %}
+                                <span class="badge badge-movie">Movie</span>
+                            {% elif job.content_type == 'tv_season' %}
+                                <span class="badge badge-tv">TV</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-muted">Not identified</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-muted">{{ job.updated_at }}</td>
+                    <td>
+                        {% if job.status in ['complete', 'failed'] %}
+                        <button class="btn btn-sm btn-secondary" onclick="archiveJob({{ job.id }})" title="Archive">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M0 2a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1v7.5a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 1 12.5V5a1 1 0 0 1-1-1V2zm2 3v7.5A1.5 1.5 0 0 0 3.5 14h9a1.5 1.5 0 0 0 1.5-1.5V5H2zm13-3H1v2h14V2zM5 7.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5z"/>
+                            </svg>
+                        </button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="text-muted" style="text-align: center;">No jobs yet</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const toggle = document.getElementById('active-mode-toggle');
+        const stateLabel = document.getElementById('active-mode-state');
+
+        toggle.addEventListener('change', async function() {
+            const newState = this.checked;
+
+            try {
+                const response = await fetch('/api/active-mode', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ active_mode: newState })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    // Update the UI to reflect the new state
+                    if (result.active_mode) {
+                        stateLabel.textContent = 'ON';
+                        stateLabel.classList.remove('off');
+                        stateLabel.classList.add('on');
+                    } else {
+                        stateLabel.textContent = 'OFF';
+                        stateLabel.classList.remove('on');
+                        stateLabel.classList.add('off');
+                    }
+                    // Reload to update the description text
+                    window.location.reload();
+                } else {
+                    // Revert toggle if failed
+                    toggle.checked = !newState;
+                    alert('Failed to update active mode');
+                }
+            } catch (error) {
+                // Revert toggle on error
+                toggle.checked = !newState;
+                console.error('Error updating active mode:', error);
+                alert('Error updating active mode');
+            }
+        });
+    });
+
+    async function archiveJob(jobId) {
+        try {
+            const response = await fetch(`/api/jobs/${jobId}/archive`, {
+                method: 'POST',
+            });
+
+            if (response.ok) {
+                // Remove the row from the table
+                const row = document.querySelector(`tr[data-job-id="${jobId}"]`);
+                if (row) {
+                    row.remove();
+                }
+            } else {
+                const data = await response.json();
+                alert(data.detail || 'Failed to archive job');
+            }
+        } catch (error) {
+            console.error('Error archiving job:', error);
+            alert('Failed to archive job');
+        }
+    }
+</script>
+{% endblock %}
