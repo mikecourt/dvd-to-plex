@@ -99,7 +99,13 @@
                     </td>
                     <td class="text-muted">{{ job.updated_at }}</td>
                     <td>
-                        {% if job.status in ['complete', 'failed'] %}
+                        {% if job.status in ['pending', 'ripping', 'ripped', 'encoding', 'encoded'] and not job.identified_title %}
+                        <button class="btn btn-sm btn-primary" onclick="identifyJob({{ job.id }}, '{{ job.disc_label|replace("'", "\\'")|e }}')" title="Identify">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
+                            </svg>
+                        </button>
+                        {% elif job.status in ['complete', 'failed'] %}
                         <button class="btn btn-sm btn-secondary" onclick="archiveJob({{ job.id }})" title="Archive">
                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
                                 <path d="M0 2a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1v7.5a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 1 12.5V5a1 1 0 0 1-1-1V2zm2 3v7.5A1.5 1.5 0 0 0 3.5 14h9a1.5 1.5 0 0 0 1.5-1.5V5H2zm13-3H1v2h14V2zM5 7.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5z"/>
@@ -185,6 +191,56 @@
         } catch (error) {
             console.error('Error archiving job:', error);
             alert('Failed to archive job');
+        }
+    }
+
+    async function identifyJob(jobId, discLabel) {
+        // Pre-fill title with disc label, replacing underscores with spaces
+        const defaultTitle = discLabel.replace(/_/g, ' ');
+
+        const title = prompt('Enter the title:', defaultTitle);
+        if (title === null) {
+            // User cancelled
+            return;
+        }
+
+        if (!title.trim()) {
+            alert('Title is required');
+            return;
+        }
+
+        const yearInput = prompt('Enter the year (optional):');
+        // User cancelled on year prompt
+        if (yearInput === null) {
+            return;
+        }
+
+        const year = yearInput.trim() ? parseInt(yearInput.trim(), 10) : null;
+
+        // Validate year if provided
+        if (year !== null && (isNaN(year) || year < 1800 || year > 2100)) {
+            alert('Please enter a valid year (1800-2100)');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/jobs/${jobId}/pre-identify`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ title: title.trim(), year: year })
+            });
+
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                const data = await response.json();
+                alert(data.detail || 'Failed to identify job');
+            }
+        } catch (error) {
+            console.error('Error identifying job:', error);
+            alert('Failed to identify job');
         }
     }
 </script>
