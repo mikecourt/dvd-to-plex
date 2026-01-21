@@ -503,3 +503,31 @@ class TestIdentifierServiceJobProcessing:
         )
         assert failed_call is not None
         assert "API Error" in failed_call[1].get("error_message", "")
+
+    @pytest.mark.asyncio
+    async def test_identifier_skips_preidentified_jobs(
+        self, mock_db: MagicMock, sample_job: Job
+    ) -> None:
+        """Pre-identified jobs should skip TMDb search and go straight to MOVING."""
+        # Configure job as pre-identified (confidence=1.0, has identified_title)
+        sample_job.identified_title = "The Matrix"
+        sample_job.confidence = 1.0
+        mock_db.get_jobs_by_status.return_value = [sample_job]
+        mock_db.get_job = AsyncMock(return_value=sample_job)
+
+        mock_tmdb = MagicMock(spec=TMDbClient)
+        mock_tmdb.search_movie = AsyncMock(return_value=[])
+        mock_tmdb.search_tv = AsyncMock(return_value=[])
+        mock_tmdb.close = AsyncMock()
+
+        config = Config(tmdb_api_token="test", auto_approve_threshold=0.85)
+        service = IdentifierService(db=mock_db, config=config, tmdb_client=mock_tmdb)
+
+        await service._process_encoded_jobs()
+
+        # TMDb search should NOT have been called
+        mock_tmdb.search_movie.assert_not_called()
+
+        # Job should transition to MOVING status
+        calls = mock_db.update_job_status.call_args_list
+        assert any(call[0][1] == JobStatus.MOVING for call in calls)
