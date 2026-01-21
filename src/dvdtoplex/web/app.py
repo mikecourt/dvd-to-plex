@@ -825,6 +825,31 @@ def create_app(
             status_code=404,
         )
 
+    # Oversight endpoints for state consistency checking
+    @app.get("/api/oversight/check")
+    async def check_oversight() -> JSONResponse:
+        """Check for state consistency issues."""
+        if app.state.database is None:
+            return JSONResponse(content={"issues": [], "count": 0})
+
+        from dvdtoplex.services.oversight import check_state_consistency
+
+        issues = await check_state_consistency(app.state.database)
+        return JSONResponse(content={"issues": issues, "count": len(issues)})
+
+    @app.post("/api/oversight/fix-encoding")
+    async def fix_encoding_issues() -> JSONResponse:
+        """Fix multiple encoding jobs by resetting older ones."""
+        if app.state.database is None:
+            return JSONResponse(
+                content={"detail": "Database not available"}, status_code=500
+            )
+
+        from dvdtoplex.services.oversight import fix_stuck_encoding_jobs
+
+        fixed_count = await fix_stuck_encoding_jobs(app.state.database)
+        return JSONResponse(content={"success": True, "fixed_count": fixed_count})
+
     # Test endpoints for browser verification (development only)
     @app.post("/api/test/add-job")
     async def add_test_job(request: Request) -> JSONResponse:

@@ -31,6 +31,17 @@
     </div>
 </div>
 
+<!-- Oversight Warning Banner -->
+<div id="oversight-warning" class="card mb-3" style="display: none; border-color: #f0ad4e; background-color: #fcf8e3;">
+    <div class="card-header" style="background-color: #f0ad4e; color: #8a6d3b;">
+        <span class="card-title">State Issues Detected</span>
+    </div>
+    <div class="card-body">
+        <ul id="oversight-issues" style="margin: 0 0 1rem 0; padding-left: 1.5rem; color: #8a6d3b;"></ul>
+        <button class="btn btn-primary" onclick="fixEncodingIssues()">Auto-Fix Encoding Issues</button>
+    </div>
+</div>
+
 <!-- Drive Status Cards -->
 <div class="grid-2 mb-3">
     {% for drive in drives %}
@@ -127,7 +138,57 @@
 
 {% block scripts %}
 <script>
+    async function checkOversight() {
+        try {
+            const response = await fetch('/api/oversight/check');
+            const data = await response.json();
+
+            if (data.count > 0) {
+                const warningDiv = document.getElementById('oversight-warning');
+                const issuesList = document.getElementById('oversight-issues');
+
+                // Clear existing issues
+                issuesList.innerHTML = '';
+
+                // Add each issue as a list item
+                data.issues.forEach(function(issue) {
+                    const li = document.createElement('li');
+                    li.textContent = issue;
+                    issuesList.appendChild(li);
+                });
+
+                // Show the warning banner
+                warningDiv.style.display = 'block';
+            }
+        } catch (error) {
+            console.error('Error checking oversight:', error);
+        }
+    }
+
+    async function fixEncodingIssues() {
+        try {
+            const response = await fetch('/api/oversight/fix-encoding', {
+                method: 'POST'
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                alert('Fixed ' + data.fixed_count + ' encoding job(s). Reloading...');
+                window.location.reload();
+            } else {
+                alert(data.detail || 'Failed to fix encoding issues');
+            }
+        } catch (error) {
+            console.error('Error fixing encoding issues:', error);
+            alert('Failed to fix encoding issues');
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
+        // Check for oversight issues on page load
+        checkOversight();
+
         const toggle = document.getElementById('active-mode-toggle');
         const stateLabel = document.getElementById('active-mode-state');
 
