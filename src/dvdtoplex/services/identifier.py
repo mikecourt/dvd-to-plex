@@ -227,10 +227,11 @@ class IdentifierService:
             # Get the job record to access encode_path
             job = await self.db.get_job(job_id)
 
-            # Check if job is already pre-identified (confidence=1.0 and has title)
-            if job and job.identified_title and job.confidence == 1.0:
+            # Check if job is already pre-identified (has title set by user)
+            # Any job with identified_title set is considered pre-identified and skips auto-ID
+            if job and job.identified_title:
                 logger.info(
-                    f"Job {job_id} already pre-identified as '{job.identified_title}', "
+                    f"Job {job_id} already identified as '{job.identified_title}', "
                     "skipping automatic identification"
                 )
                 await self.db.update_job_status(job_id, JobStatus.MOVING)

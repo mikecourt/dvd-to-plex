@@ -42,9 +42,25 @@ class EncodeQueue:
         if self._running:
             return
 
+        # Recover any jobs stuck in encoding from a previous run
+        await self._recover_stuck_jobs()
+
         self._running = True
         self._task = asyncio.create_task(self._process_loop())
         logger.info("Started encode queue processor")
+
+    async def _recover_stuck_jobs(self) -> None:
+        """Reset any jobs stuck in encoding status to ripped.
+
+        This handles the case where the app was stopped while encoding was in progress.
+        """
+        stuck_jobs = await self.database.get_jobs_by_status(JobStatus.ENCODING)
+        for job in stuck_jobs:
+            logger.warning(
+                f"Found job {job.id} ({job.disc_label}) stuck in encoding status, "
+                "reverting to ripped"
+            )
+            await self.database.update_job_status(job.id, JobStatus.RIPPED)
 
     async def stop(self) -> None:
         """Stop processing encode queue."""
@@ -135,6 +151,12 @@ class EncodeQueue:
             )
 
             logger.info(f"Completed encode of {disc_label} to {output_path}")
+
+        except asyncio.CancelledError:
+            # Cancelled during encoding (e.g., shutdown) - revert to ripped so it can resume
+            logger.warning(f"Encoding cancelled for job {job_id}, reverting to ripped status")
+            await self.database.update_job_status(job_id, JobStatus.RIPPED)
+            raise  # Re-raise to propagate cancellation
 
         except Exception as e:
             logger.error(f"Error encoding job {job_id}: {e}")

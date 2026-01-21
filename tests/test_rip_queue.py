@@ -175,9 +175,16 @@ class TestRipQueue:
         database: Database,
     ) -> None:
         """Should handle disc with no titles."""
+        from dvdtoplex.makemkv import DiscReadError
+
         job = await database.create_job("0", "EMPTY_DISC")
 
-        mock_info.return_value = []
+        # get_disc_info now raises DiscReadError when no titles found
+        mock_info.side_effect = DiscReadError(
+            "No titles found on disc",
+            device="0",
+            details="Title #1 has length of 30 seconds which is less than minimum",
+        )
 
         await rip_queue._rip_job(job.id, "0")
 
@@ -185,6 +192,8 @@ class TestRipQueue:
         assert updated_job is not None
         assert updated_job.status == JobStatus.FAILED
         assert "No titles found" in (updated_job.error_message or "")
+        # Check that details are included
+        assert "minimum" in (updated_job.error_message or "")
 
     @pytest.mark.asyncio
     @patch("dvdtoplex.services.rip_queue.get_disc_info")

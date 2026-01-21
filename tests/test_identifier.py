@@ -422,6 +422,7 @@ class TestIdentifierServiceJobProcessing:
     ) -> None:
         """Job with high confidence should transition to MOVING."""
         mock_db.get_jobs_by_status.return_value = [sample_job]
+        mock_db.get_job = AsyncMock(return_value=sample_job)
 
         mock_tmdb = MagicMock(spec=TMDbClient)
         mock_tmdb.search_movie = AsyncMock(return_value=[
@@ -456,6 +457,7 @@ class TestIdentifierServiceJobProcessing:
         """Job with low confidence should transition to REVIEW."""
         sample_job.disc_label = "RANDOM_OBSCURE_DISC"
         mock_db.get_jobs_by_status.return_value = [sample_job]
+        mock_db.get_job = AsyncMock(return_value=sample_job)
 
         mock_tmdb = MagicMock(spec=TMDbClient)
         mock_tmdb.search_movie = AsyncMock(return_value=[
@@ -486,6 +488,7 @@ class TestIdentifierServiceJobProcessing:
     ) -> None:
         """Job processing errors should mark job as FAILED."""
         mock_db.get_jobs_by_status.return_value = [sample_job]
+        mock_db.get_job = AsyncMock(return_value=sample_job)
 
         mock_tmdb = MagicMock(spec=TMDbClient)
         mock_tmdb.search_movie = AsyncMock(side_effect=Exception("API Error"))

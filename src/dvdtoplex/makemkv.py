@@ -211,6 +211,31 @@ def _drutil_to_makemkv_id(drive_id: str) -> str:
     return drive_id
 
 
+def _extract_makemkv_messages(output: str) -> list[str]:
+    """Extract human-readable messages from MakeMKV output.
+
+    Args:
+        output: Raw MakeMKV output.
+
+    Returns:
+        List of message strings (skipping routine status messages).
+    """
+    messages = []
+    for line in output.splitlines():
+        if line.startswith("MSG:"):
+            # Format: MSG:code,flags,count,"message","format",...
+            parts = line[4:].split(",", 3)
+            if len(parts) >= 4:
+                # Extract the human-readable message (4th part, quoted)
+                msg = parts[3].strip('"').split('","')[0]
+                # Skip routine messages
+                if not any(skip in msg.lower() for skip in [
+                    "started", "opened in os access mode", "operation successfully"
+                ]):
+                    messages.append(msg)
+    return messages
+
+
 async def get_disc_info(drive_id: str) -> list[TitleInfo]:
     """Get information about all titles on a disc.
 
@@ -219,6 +244,9 @@ async def get_disc_info(drive_id: str) -> list[TitleInfo]:
 
     Returns:
         List of TitleInfo objects for each title on the disc.
+
+    Raises:
+        DiscReadError: If no titles can be found, with diagnostic details.
     """
     try:
         # Convert drutil ID to MakeMKV ID and format source
@@ -235,10 +263,29 @@ async def get_disc_info(drive_id: str) -> list[TitleInfo]:
         )
         stdout, _ = await proc.communicate()
         output = stdout.decode("utf-8", errors="replace")
-        return parse_title_info(output)
+
+        titles = parse_title_info(output)
+
+        if not titles:
+            # Extract diagnostic messages from MakeMKV
+            messages = _extract_makemkv_messages(output)
+            if messages:
+                logger.warning(f"MakeMKV messages for {drive_id}: {messages}")
+            raise DiscReadError(
+                "No titles found on disc",
+                device=drive_id,
+                details="; ".join(messages) if messages else None,
+            )
+
+        return titles
+    except DiscReadError:
+        raise  # Re-raise DiscReadError as-is
     except Exception as e:
         logger.error(f"Error getting disc info for {drive_id}: {e}")
-        return []
+        raise DiscReadError(
+            f"Failed to read disc: {e}",
+            device=drive_id,
+        )
 
 
 async def rip_title(

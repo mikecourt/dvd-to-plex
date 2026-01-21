@@ -6,7 +6,7 @@ import logging
 from dvdtoplex.config import Config
 from dvdtoplex.database import Database, JobStatus
 from dvdtoplex.drives import eject_drive
-from dvdtoplex.makemkv import TitleInfo, get_disc_info, rip_title
+from dvdtoplex.makemkv import DiscReadError, TitleInfo, get_disc_info, rip_title
 from dvdtoplex.notifications import Notifier
 
 logger = logging.getLogger(__name__)
@@ -150,10 +150,8 @@ class RipQueue:
             # Update status to ripping
             await self.database.update_job_status(job_id, JobStatus.RIPPING)
 
-            # Get disc info
+            # Get disc info (raises DiscReadError with details if no titles found)
             titles = await get_disc_info(drive_id)
-            if not titles:
-                raise RuntimeError("No titles found on disc")
 
             # Select main title
             main_title = select_main_title(titles)
@@ -190,6 +188,20 @@ class RipQueue:
             logger.info(f"Completed rip of {disc_label} to {ripped_path}")
 
             # Eject disc
+            await eject_drive(drive_id)
+
+        except DiscReadError as e:
+            # Include diagnostic details from MakeMKV in error message
+            error_msg = str(e)
+            if e.details:
+                error_msg = f"{e}: {e.details}"
+            logger.error(f"Error ripping job {job_id}: {error_msg}")
+            await self.database.update_job_status(
+                job_id,
+                JobStatus.FAILED,
+                error_message=error_msg,
+            )
+            await self._notifier.notify_error(disc_label, error_msg)
             await eject_drive(drive_id)
 
         except Exception as e:
