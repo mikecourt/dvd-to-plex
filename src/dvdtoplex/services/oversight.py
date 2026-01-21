@@ -1,9 +1,12 @@
 """State consistency oversight service for detecting impossible states."""
 
+import logging
 from collections import defaultdict
 from datetime import datetime, timedelta
 
 from dvdtoplex.database import Database, Job, JobStatus
+
+logger = logging.getLogger(__name__)
 
 # Timeout constants for transient states (in hours)
 RIPPING_TIMEOUT_HOURS = 4
@@ -83,6 +86,45 @@ async def check_state_consistency(db: Database) -> list[str]:
                 )
 
     return issues
+
+
+async def startup_cleanup(db: Database) -> dict[str, int]:
+    """Clean up orphaned state on startup.
+
+    Resets jobs stuck in transient states (likely from crash/restart).
+
+    Returns:
+        Dict with counts of actions taken.
+    """
+    results = {"reset_ripping": 0, "reset_encoding": 0, "reset_identifying": 0}
+
+    all_jobs = await db.get_all_jobs()
+
+    for job in all_jobs:
+        if job.status == JobStatus.RIPPING:
+            logger.info(f"Startup: Resetting stuck RIPPING job {job.id} ({job.disc_label}) to FAILED")
+            await db.update_job_status(
+                job.id, JobStatus.FAILED, error_message="Reset on startup - was stuck in RIPPING"
+            )
+            results["reset_ripping"] += 1
+
+        elif job.status == JobStatus.ENCODING:
+            # Reset to RIPPED so it can re-encode
+            logger.info(f"Startup: Resetting stuck ENCODING job {job.id} ({job.disc_label}) to RIPPED")
+            await db.update_job_status(job.id, JobStatus.RIPPED)
+            results["reset_encoding"] += 1
+
+        elif job.status == JobStatus.IDENTIFYING:
+            # Reset to ENCODED so it can re-identify
+            logger.info(f"Startup: Resetting stuck IDENTIFYING job {job.id} ({job.disc_label}) to ENCODED")
+            await db.update_job_status(job.id, JobStatus.ENCODED)
+            results["reset_identifying"] += 1
+
+    total = sum(results.values())
+    if total > 0:
+        logger.info(f"Startup cleanup complete: {results}")
+
+    return results
 
 
 async def fix_stuck_encoding_jobs(db: Database) -> int:

@@ -15,6 +15,7 @@ from dvdtoplex.services.rip_queue import RipQueue
 from dvdtoplex.services.encode_queue import EncodeQueue
 from dvdtoplex.services.identifier import IdentifierService
 from dvdtoplex.services.file_mover import FileMover
+from dvdtoplex.services.oversight import startup_cleanup
 from dvdtoplex.web.app import create_app
 
 
@@ -104,6 +105,11 @@ class Application:
         """Initialize the application (directories, database)."""
         await self._ensure_directories()
         await self.database.initialize()
+
+        # Run startup cleanup
+        cleanup_results = await startup_cleanup(self.database)
+        if sum(cleanup_results.values()) > 0:
+            logger.info(f"Startup cleanup: {cleanup_results}")
 
     async def start_services(self) -> None:
         """Start all services."""

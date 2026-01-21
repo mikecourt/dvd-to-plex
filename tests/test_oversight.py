@@ -5,6 +5,7 @@ import pytest_asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import AsyncMock
 
 from dvdtoplex.database import Database, JobStatus
 from dvdtoplex.services.oversight import (
@@ -13,6 +14,7 @@ from dvdtoplex.services.oversight import (
     IDENTIFYING_TIMEOUT_HOURS,
     check_state_consistency,
     fix_stuck_encoding_jobs,
+    startup_cleanup,
 )
 
 
@@ -278,3 +280,106 @@ class TestTimeoutConstants:
     def test_identifying_timeout_is_1_hour(self) -> None:
         """IDENTIFYING timeout should be 1 hour."""
         assert IDENTIFYING_TIMEOUT_HOURS == 1
+
+
+class TestStartupCleanup:
+    """Tests for startup_cleanup function."""
+
+    @pytest.mark.asyncio
+    async def test_startup_cleanup_resets_ripping(self) -> None:
+        """Startup should reset RIPPING jobs to FAILED."""
+        from dvdtoplex.database import Job
+
+        job = Job(
+            id=1, drive_id="1", disc_label="DISC", content_type=None, status=JobStatus.RIPPING,
+            identified_title=None, identified_year=None, tmdb_id=None, confidence=None,
+            poster_path=None, rip_path=None, encode_path=None, final_path=None,
+            error_message=None, created_at=datetime.now(), updated_at=datetime.now()
+        )
+
+        mock_db = AsyncMock()
+        mock_db.get_all_jobs.return_value = [job]
+
+        results = await startup_cleanup(mock_db)
+
+        assert results["reset_ripping"] == 1
+        mock_db.update_job_status.assert_called_once()
+        call_args = mock_db.update_job_status.call_args
+        assert call_args[0][0] == 1
+        assert call_args[0][1] == JobStatus.FAILED
+
+    @pytest.mark.asyncio
+    async def test_startup_cleanup_resets_encoding(self) -> None:
+        """Startup should reset ENCODING jobs to RIPPED."""
+        from dvdtoplex.database import Job
+
+        job = Job(
+            id=1, drive_id="1", disc_label="DISC", content_type=None, status=JobStatus.ENCODING,
+            identified_title=None, identified_year=None, tmdb_id=None, confidence=None,
+            poster_path=None, rip_path=None, encode_path=None, final_path=None,
+            error_message=None, created_at=datetime.now(), updated_at=datetime.now()
+        )
+
+        mock_db = AsyncMock()
+        mock_db.get_all_jobs.return_value = [job]
+
+        results = await startup_cleanup(mock_db)
+
+        assert results["reset_encoding"] == 1
+        mock_db.update_job_status.assert_called_once_with(1, JobStatus.RIPPED)
+
+    @pytest.mark.asyncio
+    async def test_startup_cleanup_resets_identifying(self) -> None:
+        """Startup should reset IDENTIFYING jobs to ENCODED."""
+        from dvdtoplex.database import Job
+
+        job = Job(
+            id=1, drive_id="1", disc_label="DISC", content_type=None, status=JobStatus.IDENTIFYING,
+            identified_title=None, identified_year=None, tmdb_id=None, confidence=None,
+            poster_path=None, rip_path=None, encode_path=None, final_path=None,
+            error_message=None, created_at=datetime.now(), updated_at=datetime.now()
+        )
+
+        mock_db = AsyncMock()
+        mock_db.get_all_jobs.return_value = [job]
+
+        results = await startup_cleanup(mock_db)
+
+        assert results["reset_identifying"] == 1
+        mock_db.update_job_status.assert_called_once_with(1, JobStatus.ENCODED)
+
+    @pytest.mark.asyncio
+    async def test_startup_cleanup_ignores_other_statuses(self) -> None:
+        """Startup should not touch jobs in other statuses."""
+        from dvdtoplex.database import Job
+
+        jobs = [
+            Job(
+                id=1, drive_id="1", disc_label="DISC1", content_type=None, status=JobStatus.PENDING,
+                identified_title=None, identified_year=None, tmdb_id=None, confidence=None,
+                poster_path=None, rip_path=None, encode_path=None, final_path=None,
+                error_message=None, created_at=datetime.now(), updated_at=datetime.now()
+            ),
+            Job(
+                id=2, drive_id="1", disc_label="DISC2", content_type=None, status=JobStatus.COMPLETE,
+                identified_title=None, identified_year=None, tmdb_id=None, confidence=None,
+                poster_path=None, rip_path=None, encode_path=None, final_path=None,
+                error_message=None, created_at=datetime.now(), updated_at=datetime.now()
+            ),
+            Job(
+                id=3, drive_id="1", disc_label="DISC3", content_type=None, status=JobStatus.FAILED,
+                identified_title=None, identified_year=None, tmdb_id=None, confidence=None,
+                poster_path=None, rip_path=None, encode_path=None, final_path=None,
+                error_message=None, created_at=datetime.now(), updated_at=datetime.now()
+            ),
+        ]
+
+        mock_db = AsyncMock()
+        mock_db.get_all_jobs.return_value = jobs
+
+        results = await startup_cleanup(mock_db)
+
+        assert results["reset_ripping"] == 0
+        assert results["reset_encoding"] == 0
+        assert results["reset_identifying"] == 0
+        mock_db.update_job_status.assert_not_called()
