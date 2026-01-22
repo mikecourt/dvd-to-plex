@@ -123,6 +123,7 @@
                 <tr>
                     <th>Disc Label</th>
                     <th>Status</th>
+                    <th>Mode</th>
                     <th>Size</th>
                     <th>Identified As</th>
                     <th>Updated</th>
@@ -134,6 +135,19 @@
                 <tr data-job-id="{{ job.id }}">
                     <td>{{ job.disc_label }}</td>
                     <td><span class="status status-{{ job.status|lower }}">{{ job.status }}</span></td>
+                    <td>
+                        {% if job.rip_mode == 'movie' %}
+                            <span class="badge badge-movie">Movie</span>
+                        {% elif job.rip_mode == 'tv' %}
+                            <span class="badge badge-tv">TV</span>
+                        {% elif job.rip_mode == 'home_movies' %}
+                            <span class="badge badge-home">Home</span>
+                        {% elif job.rip_mode == 'other' %}
+                            <span class="badge badge-other">Other</span>
+                        {% else %}
+                            <span class="badge">--</span>
+                        {% endif %}
+                    </td>
                     <td class="text-muted">{{ job.file_size or '--' }}</td>
                     <td>
                         {% if job.identified_title %}
@@ -167,7 +181,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="6" class="text-muted" style="text-align: center;">No jobs yet</td>
+                    <td colspan="7" class="text-muted" style="text-align: center;">No jobs yet</td>
                 </tr>
                 {% endfor %}
             </tbody>

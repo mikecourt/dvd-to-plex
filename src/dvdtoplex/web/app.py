@@ -178,6 +178,8 @@ def create_app(
                     "status": job.status.value,
                     "identified_title": job.identified_title,
                     "identified_year": job.identified_year,
+                    "content_type": job.content_type.value if job.content_type else None,
+                    "rip_mode": job.rip_mode.value if job.rip_mode else "movie",
                     "updated_at": job.updated_at.isoformat() if job.updated_at else None,
                     "file_size": get_job_file_size(job.id, job.status.value, app.state.config) if app.state.config else None,
                 }
