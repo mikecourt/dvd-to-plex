@@ -52,6 +52,7 @@ class Job:
     disc_label: str
     content_type: ContentType
     status: JobStatus
+    rip_mode: RipMode
     identified_title: str | None
     identified_year: int | None
     tmdb_id: int | None
@@ -198,6 +199,7 @@ class Database:
                 disc_label TEXT NOT NULL,
                 content_type TEXT NOT NULL DEFAULT 'unknown',
                 status TEXT NOT NULL DEFAULT 'pending',
+                rip_mode TEXT NOT NULL DEFAULT 'movie',
                 identified_title TEXT,
                 identified_year INTEGER,
                 tmdb_id INTEGER,
@@ -270,6 +272,12 @@ class Database:
             )
             await self.connection.commit()
 
+        if "rip_mode" not in column_names:
+            await self.connection.execute(
+                "ALTER TABLE jobs ADD COLUMN rip_mode TEXT NOT NULL DEFAULT 'movie'"
+            )
+            await self.connection.commit()
+
     async def _create_indexes(self) -> None:
         """Create database indexes for common queries."""
         await self.connection.executescript("""
@@ -285,6 +293,7 @@ class Database:
         drive_id: str,
         disc_label: str,
         content_type: ContentType = ContentType.UNKNOWN,
+        rip_mode: RipMode = RipMode.MOVIE,
     ) -> Job:
         """Create a new job and return it.
 
@@ -292,16 +301,17 @@ class Database:
             drive_id: Identifier of the DVD drive.
             disc_label: Label of the disc.
             content_type: Type of content on the disc.
+            rip_mode: The ripping mode (default: MOVIE).
 
         Returns:
             The created job.
         """
         cursor = await self.connection.execute(
             """
-            INSERT INTO jobs (drive_id, disc_label, content_type, status)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO jobs (drive_id, disc_label, content_type, status, rip_mode)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (drive_id, disc_label, content_type.value, JobStatus.PENDING.value),
+            (drive_id, disc_label, content_type.value, JobStatus.PENDING.value, rip_mode.value),
         )
         await self.connection.commit()
         job_id = cursor.lastrowid or 0
@@ -547,6 +557,7 @@ class Database:
             disc_label=row["disc_label"],
             content_type=ContentType(row["content_type"]),
             status=JobStatus(row["status"]),
+            rip_mode=RipMode(row["rip_mode"]) if row["rip_mode"] else RipMode.MOVIE,
             identified_title=row["identified_title"],
             identified_year=row["identified_year"],
             tmdb_id=row["tmdb_id"],
