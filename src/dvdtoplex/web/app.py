@@ -81,6 +81,12 @@ class ActiveModeRequest(BaseModel):
     active_mode: bool
 
 
+class RipModeRequest(BaseModel):
+    """Request body for rip mode selection."""
+
+    mode: str
+
+
 class IdentifyRequest(BaseModel):
     """Request body for job identification update."""
 
@@ -157,6 +163,11 @@ def create_app(
 
         Shows active mode toggle, drive status, and recent jobs.
         """
+        # Get current rip mode
+        current_mode = "movie"
+        if app.state.database is not None:
+            current_mode = await app.state.database.get_setting("current_mode") or "movie"
+
         # Fetch recent jobs from database if available
         if app.state.database is not None:
             db_jobs = await app.state.database.get_recent_jobs(20, exclude_archived=True)
@@ -205,6 +216,7 @@ def create_app(
             {
                 "request": request,
                 "active_mode": app.state.active_mode,
+                "current_mode": current_mode,
                 "drives": drives,
                 "recent_jobs": recent_jobs,
             },
@@ -235,6 +247,43 @@ def create_app(
                 "active_mode": app.state.active_mode,
             }
         )
+
+    @app.get("/api/mode")
+    async def get_current_mode() -> JSONResponse:
+        """Get the current ripping mode.
+
+        Returns:
+            JSON with current mode.
+        """
+        if app.state.database is None:
+            return JSONResponse(content={"mode": "movie"})
+
+        mode = await app.state.database.get_setting("current_mode")
+        return JSONResponse(content={"mode": mode or "movie"})
+
+    @app.post("/api/mode")
+    async def set_current_mode(body: RipModeRequest) -> JSONResponse:
+        """Set the current ripping mode.
+
+        Args:
+            body: JSON body with 'mode' key.
+
+        Returns:
+            JSON with success status.
+        """
+        mode = body.mode
+        valid_modes = {"movie", "tv", "home_movies", "other"}
+
+        if mode not in valid_modes:
+            return JSONResponse(
+                content={"detail": f"Invalid mode. Must be one of: {valid_modes}"},
+                status_code=400,
+            )
+
+        if app.state.database is not None:
+            await app.state.database.set_setting("current_mode", mode)
+
+        return JSONResponse(content={"success": True, "mode": mode})
 
     @app.get("/review", response_class=HTMLResponse)
     async def review(request: Request) -> HTMLResponse:
