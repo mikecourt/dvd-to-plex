@@ -549,6 +549,23 @@ class Database:
         )
         await self.connection.commit()
 
+    async def update_job_rip_mode(self, job_id: int, rip_mode: RipMode) -> None:
+        """Update a job's rip mode.
+
+        Args:
+            job_id: The job ID.
+            rip_mode: The new rip mode.
+        """
+        await self.connection.execute(
+            """
+            UPDATE jobs
+            SET rip_mode = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (rip_mode.value, job_id),
+        )
+        await self.connection.commit()
+
     def _row_to_job(self, row: aiosqlite.Row) -> Job:
         """Convert a database row to a Job object."""
         return Job(

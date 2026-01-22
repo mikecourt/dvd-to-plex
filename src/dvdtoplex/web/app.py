@@ -313,6 +313,7 @@ def create_app(
                     "identified_year": job.identified_year,
                     "confidence": job.confidence,
                     "content_type": job.content_type.value if job.content_type else None,
+                    "rip_mode": job.rip_mode.value if job.rip_mode else "movie",
                     "screenshots": screenshots,
                     "poster_url": f"https://image.tmdb.org/t/p/w200{job.poster_path}" if job.poster_path else None,
                     "updated_at": job.updated_at.isoformat() if job.updated_at else None,
@@ -383,18 +384,19 @@ def create_app(
 
     # API endpoints for review page actions
     @app.post("/api/jobs/{job_id}/approve")
-    async def approve_job(job_id: int) -> JSONResponse:
+    async def approve_job(job_id: int, request: Request) -> JSONResponse:
         """Approve a job's identification and move to MOVING status.
 
         Args:
             job_id: The ID of the job to approve.
+            request: Optional JSON body with 'mode' to override rip_mode.
 
         Returns:
             JSON response with success status.
         """
         # Use database if available
         if app.state.database is not None:
-            from dvdtoplex.database import JobStatus
+            from dvdtoplex.database import JobStatus, RipMode
 
             job = await app.state.database.get_job(job_id)
             if job is None:
@@ -409,6 +411,20 @@ def create_app(
                     },
                     status_code=400,
                 )
+
+            # Check for mode override in request body
+            try:
+                body = await request.json()
+                mode_str = body.get("mode")
+                if mode_str:
+                    try:
+                        new_mode = RipMode(mode_str)
+                        await app.state.database.update_job_rip_mode(job_id, new_mode)
+                    except ValueError:
+                        pass  # Invalid mode, ignore
+            except Exception:
+                pass  # No body or invalid JSON, proceed without mode change
+
             await app.state.database.update_job_status(job_id, JobStatus.MOVING)
             return JSONResponse(
                 content={
