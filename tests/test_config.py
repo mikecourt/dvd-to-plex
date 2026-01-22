@@ -64,6 +64,18 @@ class TestConfig:
         config = Config(workspace_dir=Path("/test/workspace"))
         assert config.encoding_dir == Path("/test/workspace/encoding")
 
+    def test_config_has_home_movies_dir(self) -> None:
+        """Test config has plex_home_movies_dir."""
+        config = Config()
+        assert hasattr(config, "plex_home_movies_dir")
+        assert isinstance(config.plex_home_movies_dir, Path)
+
+    def test_config_has_other_dir(self) -> None:
+        """Test config has plex_other_dir."""
+        config = Config()
+        assert hasattr(config, "plex_other_dir")
+        assert isinstance(config.plex_other_dir, Path)
+
 
 class TestLoadConfig:
     """Tests for load_config function."""
@@ -111,3 +123,15 @@ class TestLoadConfig:
         monkeypatch.setenv("AUTO_APPROVE_THRESHOLD", "1.0")
         config = load_config()
         assert config.auto_approve_threshold == 1.0
+
+    def test_load_config_home_movies_dir(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test load_config loads plex_home_movies_dir from env."""
+        monkeypatch.setenv("PLEX_HOME_MOVIES_DIR", "/test/home/movies")
+        config = load_config()
+        assert config.plex_home_movies_dir == Path("/test/home/movies")
+
+    def test_load_config_other_dir(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test load_config loads plex_other_dir from env."""
+        monkeypatch.setenv("PLEX_OTHER_DIR", "/test/other")
+        config = load_config()
+        assert config.plex_other_dir == Path("/test/other")
