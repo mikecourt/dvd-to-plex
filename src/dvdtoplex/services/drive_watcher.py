@@ -4,7 +4,7 @@ import asyncio
 import logging
 
 from dvdtoplex.config import Config
-from dvdtoplex.database import Database, ContentType
+from dvdtoplex.database import Database, ContentType, RipMode
 from dvdtoplex.drives import DriveStatus, get_drive_status
 
 logger = logging.getLogger(__name__)
@@ -111,10 +111,18 @@ class DriveWatcher:
             )
             return
 
+        # Get current mode from settings
+        mode_str = await self.database.get_setting("current_mode")
+        try:
+            rip_mode = RipMode(mode_str) if mode_str else RipMode.MOVIE
+        except ValueError:
+            rip_mode = RipMode.MOVIE
+
         # Create a new job for this disc
         job = await self.database.create_job(
             drive_id=drive_id,
             disc_label=disc_label,
             content_type=ContentType.UNKNOWN,
+            rip_mode=rip_mode,
         )
-        logger.info(f"Created job {job.id} for disc {disc_label}")
+        logger.info(f"Created job {job.id} for disc {disc_label} with mode {rip_mode.value}")

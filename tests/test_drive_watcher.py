@@ -110,6 +110,49 @@ class TestDriveWatcher:
         assert jobs[0].disc_label == "UNKNOWN_DISC"
 
     @pytest.mark.asyncio
+    async def test_on_disc_inserted_uses_current_mode(
+        self, drive_watcher: DriveWatcher, database: Database
+    ) -> None:
+        """Should use current mode from settings when creating job."""
+        from dvdtoplex.database import RipMode
+
+        # Set the current mode to home_movies
+        await database.set_setting("current_mode", "home_movies")
+
+        status = DriveStatus(
+            drive_id="/dev/disk2",
+            vendor="MATSHITA",
+            has_disc=True,
+            disc_label="HOME_VIDEO",
+        )
+
+        await drive_watcher._on_disc_inserted("/dev/disk2", status)
+
+        jobs = await database.get_pending_jobs()
+        assert len(jobs) == 1
+        assert jobs[0].rip_mode == RipMode.HOME_MOVIES
+
+    @pytest.mark.asyncio
+    async def test_on_disc_inserted_default_mode_is_movie(
+        self, drive_watcher: DriveWatcher, database: Database
+    ) -> None:
+        """Should default to MOVIE mode if no setting."""
+        from dvdtoplex.database import RipMode
+
+        status = DriveStatus(
+            drive_id="/dev/disk2",
+            vendor="MATSHITA",
+            has_disc=True,
+            disc_label="TEST_DVD",
+        )
+
+        await drive_watcher._on_disc_inserted("/dev/disk2", status)
+
+        jobs = await database.get_pending_jobs()
+        assert len(jobs) == 1
+        assert jobs[0].rip_mode == RipMode.MOVIE
+
+    @pytest.mark.asyncio
     async def test_start_stop(self, drive_watcher: DriveWatcher) -> None:
         """Should start and stop cleanly."""
         with patch("dvdtoplex.services.drive_watcher.get_drive_status", new_callable=AsyncMock) as mock_status:
