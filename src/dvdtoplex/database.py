@@ -34,6 +34,15 @@ class ContentType(Enum):
     TV_SEASON = "tv_season"
 
 
+class RipMode(Enum):
+    """Mode for ripping and identification strategy."""
+
+    MOVIE = "movie"  # TMDb movie search, output to Movies folder
+    TV = "tv"  # TMDb TV search, output to TV Shows folder
+    HOME_MOVIES = "home_movies"  # Skip TMDb, use disc label, output to Home Movies
+    OTHER = "other"  # Skip TMDb, use disc label, output to Other folder
+
+
 @dataclass
 class Job:
     """Represents a ripping/encoding job."""

@@ -9,6 +9,7 @@ from dvdtoplex.database import (
     ContentType,
     Database,
     JobStatus,
+    RipMode,
 )
 
 
@@ -49,6 +50,17 @@ class TestEnums:
         assert ContentType.UNKNOWN.value == "unknown"
         assert ContentType.MOVIE.value == "movie"
         assert ContentType.TV_SEASON.value == "tv_season"
+
+    def test_rip_mode_enum_exists(self) -> None:
+        """Test that RipMode enum exists with all modes."""
+        assert hasattr(RipMode, "MOVIE")
+        assert hasattr(RipMode, "TV")
+        assert hasattr(RipMode, "HOME_MOVIES")
+        assert hasattr(RipMode, "OTHER")
+        assert RipMode.MOVIE.value == "movie"
+        assert RipMode.TV.value == "tv"
+        assert RipMode.HOME_MOVIES.value == "home_movies"
+        assert RipMode.OTHER.value == "other"
 
 
 class TestDatabaseConnection:
