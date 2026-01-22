@@ -8,7 +8,7 @@ from pathlib import Path
 
 from dvdtoplex.ai_identifier import identify_with_ai
 from dvdtoplex.config import Config, DEFAULT_AUTO_APPROVE_THRESHOLD
-from dvdtoplex.database import ContentType, Database, JobStatus
+from dvdtoplex.database import ContentType, Database, JobStatus, RipMode
 from dvdtoplex.notifications import Notifier
 from dvdtoplex.screenshots import extract_screenshots
 from dvdtoplex.tmdb import TMDbClient, MovieMatch, clean_disc_label
@@ -211,6 +211,27 @@ class IdentifierService:
         for job in jobs:
             await self._process_single_job(job.id, job.disc_label)
 
+    def _clean_disc_label(self, disc_label: str) -> str:
+        """Clean a disc label into a readable title.
+
+        Args:
+            disc_label: Raw disc label like "CHRISTMAS_2024"
+
+        Returns:
+            Cleaned title like "Christmas 2024"
+        """
+        # Replace underscores with spaces
+        title = disc_label.replace("_", " ")
+
+        # Title case
+        title = title.title()
+
+        # Remove common DVD suffixes
+        for suffix in ["Disc1", "Disc2", "Disc 1", "Disc 2", "Dvd", "Widescreen", "Fullscreen"]:
+            title = title.replace(suffix, "").strip()
+
+        return title.strip()
+
     async def _process_single_job(self, job_id: int, disc_label: str) -> None:
         """Process a single identification job.
 
@@ -234,6 +255,28 @@ class IdentifierService:
                     f"Job {job_id} already identified as '{job.identified_title}', "
                     "skipping automatic identification"
                 )
+                await self.db.update_job_status(job_id, JobStatus.MOVING)
+                return
+
+            # Check mode - HOME_MOVIES and OTHER skip TMDb
+            if job and job.rip_mode in (RipMode.HOME_MOVIES, RipMode.OTHER):
+                logger.info(f"Job {job_id} in {job.rip_mode.value} mode, skipping TMDb identification")
+
+                # Clean disc label for title
+                title = self._clean_disc_label(disc_label)
+
+                # Update identification with cleaned disc label
+                await self.db.update_job_identification(
+                    job_id=job_id,
+                    content_type=ContentType.MOVIE,  # Use MOVIE for file naming compatibility
+                    title=title,
+                    year=None,
+                    tmdb_id=0,
+                    confidence=1.0,  # Full confidence for user-selected mode
+                    poster_path=None,
+                )
+
+                # Skip review for home movies / other - go straight to moving
                 await self.db.update_job_status(job_id, JobStatus.MOVING)
                 return
 

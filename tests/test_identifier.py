@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 
 from dvdtoplex.config import Config
-from dvdtoplex.database import ContentType, Database, Job, JobStatus
+from dvdtoplex.database import ContentType, Database, Job, JobStatus, RipMode
 from dvdtoplex.services.identifier import (
     IdentificationResult,
     IdentifierService,
@@ -403,6 +403,7 @@ class TestIdentifierServiceJobProcessing:
             disc_label="THE_MATRIX_WS",
             content_type=ContentType.UNKNOWN,
             status=JobStatus.ENCODED,
+            rip_mode=RipMode.MOVIE,
             identified_title=None,
             identified_year=None,
             tmdb_id=None,
@@ -532,5 +533,100 @@ class TestIdentifierServiceJobProcessing:
         mock_tmdb.search_movie.assert_not_called()
 
         # Job should transition to MOVING status
+        calls = mock_db.update_job_status.call_args_list
+        assert any(call[0][1] == JobStatus.MOVING for call in calls)
+
+    @pytest.mark.asyncio
+    async def test_identifier_skips_tmdb_for_home_movies_mode(
+        self, mock_db: MagicMock
+    ) -> None:
+        """Home movies mode should skip TMDb and use disc label."""
+        from datetime import datetime
+
+        home_movie_job = Job(
+            id=1,
+            drive_id="/dev/disk2",
+            disc_label="CHRISTMAS_2024",
+            content_type=ContentType.UNKNOWN,
+            status=JobStatus.ENCODED,
+            rip_mode=RipMode.HOME_MOVIES,
+            identified_title=None,
+            identified_year=None,
+            tmdb_id=None,
+            confidence=None,
+            poster_path=None,
+            rip_path="/workspace/staging/job_1/movie.mkv",
+            encode_path="/workspace/encoding/job_1/movie.mkv",
+            final_path=None,
+            error_message=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+        mock_db.get_jobs_by_status.return_value = [home_movie_job]
+        mock_db.get_job = AsyncMock(return_value=home_movie_job)
+
+        mock_tmdb = MagicMock(spec=TMDbClient)
+        mock_tmdb.search_movie = AsyncMock(return_value=[])
+        mock_tmdb.close = AsyncMock()
+
+        config = Config(tmdb_api_token="test", auto_approve_threshold=0.85)
+        service = IdentifierService(db=mock_db, config=config, tmdb_client=mock_tmdb)
+
+        await service._process_encoded_jobs()
+
+        # TMDb search should NOT have been called
+        mock_tmdb.search_movie.assert_not_called()
+
+        # Should update identification with cleaned disc label
+        mock_db.update_job_identification.assert_called_once()
+        call_kwargs = mock_db.update_job_identification.call_args[1]
+        assert "Christmas 2024" in call_kwargs.get("title", "")
+
+        # Should transition straight to MOVING (skip review)
+        calls = mock_db.update_job_status.call_args_list
+        assert any(call[0][1] == JobStatus.MOVING for call in calls)
+
+    @pytest.mark.asyncio
+    async def test_identifier_skips_tmdb_for_other_mode(
+        self, mock_db: MagicMock
+    ) -> None:
+        """Other mode should skip TMDb and use disc label."""
+        from datetime import datetime
+
+        other_job = Job(
+            id=1,
+            drive_id="/dev/disk2",
+            disc_label="WORKOUT_DVD",
+            content_type=ContentType.UNKNOWN,
+            status=JobStatus.ENCODED,
+            rip_mode=RipMode.OTHER,
+            identified_title=None,
+            identified_year=None,
+            tmdb_id=None,
+            confidence=None,
+            poster_path=None,
+            rip_path="/workspace/staging/job_1/movie.mkv",
+            encode_path="/workspace/encoding/job_1/movie.mkv",
+            final_path=None,
+            error_message=None,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+        mock_db.get_jobs_by_status.return_value = [other_job]
+        mock_db.get_job = AsyncMock(return_value=other_job)
+
+        mock_tmdb = MagicMock(spec=TMDbClient)
+        mock_tmdb.search_movie = AsyncMock(return_value=[])
+        mock_tmdb.close = AsyncMock()
+
+        config = Config(tmdb_api_token="test", auto_approve_threshold=0.85)
+        service = IdentifierService(db=mock_db, config=config, tmdb_client=mock_tmdb)
+
+        await service._process_encoded_jobs()
+
+        # TMDb search should NOT have been called
+        mock_tmdb.search_movie.assert_not_called()
+
+        # Should transition straight to MOVING (skip review)
         calls = mock_db.update_job_status.call_args_list
         assert any(call[0][1] == JobStatus.MOVING for call in calls)
