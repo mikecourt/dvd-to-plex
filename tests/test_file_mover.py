@@ -103,6 +103,14 @@ class MockConfig:
 
     plex_movies_dir: Path
     plex_tv_dir: Path
+    plex_home_movies_dir: Path = None
+    plex_other_dir: Path = None
+
+    def __post_init__(self):
+        if self.plex_home_movies_dir is None:
+            self.plex_home_movies_dir = self.plex_movies_dir.parent / "plex_home_movies"
+        if self.plex_other_dir is None:
+            self.plex_other_dir = self.plex_movies_dir.parent / "plex_other"
 
 
 @dataclass
@@ -864,3 +872,115 @@ class TestFileMoverRetry:
         mover = FileMover(config, database)
         assert mover.max_retries == 10  # DEFAULT_MAX_RETRIES
         assert mover.retry_delay == 300  # DEFAULT_RETRY_DELAY (5 minutes)
+
+
+class TestFileMoverModeBasedDirectory:
+    """Tests for mode-based output directory selection."""
+
+    @pytest.mark.asyncio
+    async def test_home_movies_mode_uses_home_movies_dir(
+        self, temp_workspace: Path
+    ) -> None:
+        """HOME_MOVIES mode should use plex_home_movies_dir."""
+        from dvdtoplex.database import RipMode
+
+        # Create directories
+        plex_home_movies = temp_workspace / "plex_home_movies"
+        plex_home_movies.mkdir(exist_ok=True)
+
+        config = MockConfig(
+            plex_movies_dir=temp_workspace / "plex_movies",
+            plex_tv_dir=temp_workspace / "plex_tv",
+            plex_home_movies_dir=plex_home_movies,
+            plex_other_dir=temp_workspace / "plex_other",
+        )
+        (temp_workspace / "plex_movies").mkdir(exist_ok=True)
+
+        # Create test file
+        encode_file = temp_workspace / "source.mkv"
+        encode_file.write_text("content")
+
+        mover = FileMover(config, MockDatabase())
+        result = await mover.move_movie(
+            encode_file, "Christmas 2024", None, rip_mode=RipMode.HOME_MOVIES
+        )
+
+        assert result.success
+        assert result.final_path is not None
+        assert str(plex_home_movies) in str(result.final_path)
+        assert str(temp_workspace / "plex_movies") not in str(result.final_path)
+
+    @pytest.mark.asyncio
+    async def test_other_mode_uses_other_dir(
+        self, temp_workspace: Path
+    ) -> None:
+        """OTHER mode should use plex_other_dir."""
+        from dvdtoplex.database import RipMode
+
+        # Create directories
+        plex_other = temp_workspace / "plex_other"
+        plex_other.mkdir(exist_ok=True)
+
+        config = MockConfig(
+            plex_movies_dir=temp_workspace / "plex_movies",
+            plex_tv_dir=temp_workspace / "plex_tv",
+            plex_home_movies_dir=temp_workspace / "plex_home_movies",
+            plex_other_dir=plex_other,
+        )
+        (temp_workspace / "plex_movies").mkdir(exist_ok=True)
+
+        # Create test file
+        encode_file = temp_workspace / "source.mkv"
+        encode_file.write_text("content")
+
+        mover = FileMover(config, MockDatabase())
+        result = await mover.move_movie(
+            encode_file, "Workout Dvd", None, rip_mode=RipMode.OTHER
+        )
+
+        assert result.success
+        assert result.final_path is not None
+        assert str(plex_other) in str(result.final_path)
+
+    @pytest.mark.asyncio
+    async def test_movie_mode_uses_movies_dir(
+        self, temp_workspace: Path
+    ) -> None:
+        """MOVIE mode should use plex_movies_dir."""
+        from dvdtoplex.database import RipMode
+
+        plex_movies = temp_workspace / "plex_movies"
+        plex_movies.mkdir(exist_ok=True)
+
+        config = MockConfig(
+            plex_movies_dir=plex_movies,
+            plex_tv_dir=temp_workspace / "plex_tv",
+            plex_home_movies_dir=temp_workspace / "plex_home_movies",
+            plex_other_dir=temp_workspace / "plex_other",
+        )
+
+        encode_file = temp_workspace / "source.mkv"
+        encode_file.write_text("content")
+
+        mover = FileMover(config, MockDatabase())
+        result = await mover.move_movie(
+            encode_file, "Inception", 2010, rip_mode=RipMode.MOVIE
+        )
+
+        assert result.success
+        assert result.final_path is not None
+        assert str(plex_movies) in str(result.final_path)
+
+    @pytest.mark.asyncio
+    async def test_default_mode_is_movie(
+        self, config: MockConfig, temp_workspace: Path
+    ) -> None:
+        """Default (no mode specified) should use plex_movies_dir."""
+        encode_file = temp_workspace / "source.mkv"
+        encode_file.write_text("content")
+
+        mover = FileMover(config, MockDatabase())
+        result = await mover.move_movie(encode_file, "Test Movie", 2024)
+
+        assert result.success
+        assert str(config.plex_movies_dir) in str(result.final_path)

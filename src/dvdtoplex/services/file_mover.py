@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from dvdtoplex.config import Config
-    from dvdtoplex.database import Database, Job
+    from dvdtoplex.database import Database, Job, RipMode
 
 logger = logging.getLogger(__name__)
 
@@ -208,6 +208,7 @@ class FileMover:
         year = job.identified_year
         tmdb_id = job.tmdb_id
         rip_path = Path(job.rip_path) if job.rip_path else None
+        rip_mode = job.rip_mode if hasattr(job, 'rip_mode') else None
 
         # Validate encode path exists
         if not encode_path or not encode_path.exists():
@@ -233,7 +234,7 @@ class FileMover:
 
         # Move file based on content type
         if content_type == "movie":
-            result = await self.move_movie(encode_path, title, year)
+            result = await self.move_movie(encode_path, title, year, rip_mode=rip_mode)
         elif content_type == "tv_season":
             # For TV, we'd need season/episode info from the job
             # TODO: Add season/episode fields to Job model
@@ -243,7 +244,7 @@ class FileMover:
         else:
             # Treat unknown content type as movie
             logger.warning(f"Unknown content type '{content_type}', treating as movie")
-            result = await self.move_movie(encode_path, title, year)
+            result = await self.move_movie(encode_path, title, year, rip_mode=rip_mode)
 
         if not result.success:
             # Handle retryable errors (missing Plex directory)
@@ -303,8 +304,35 @@ class FileMover:
 
         logger.info(f"Job {job_id} completed: {title} -> {result.final_path}")
 
+    def _get_output_directory(self, rip_mode: "RipMode | None") -> Path:
+        """Get the output directory based on rip mode.
+
+        Args:
+            rip_mode: The rip mode, or None for default (MOVIE).
+
+        Returns:
+            Path to the appropriate output directory.
+        """
+        from dvdtoplex.database import RipMode
+
+        if rip_mode is None:
+            return self.config.plex_movies_dir
+
+        if rip_mode == RipMode.TV:
+            return self.config.plex_tv_dir
+        elif rip_mode == RipMode.HOME_MOVIES:
+            return self.config.plex_home_movies_dir
+        elif rip_mode == RipMode.OTHER:
+            return self.config.plex_other_dir
+        else:  # MOVIE is default
+            return self.config.plex_movies_dir
+
     async def move_movie(
-        self, source: Path, title: str, year: int | None
+        self,
+        source: Path,
+        title: str,
+        year: int | None,
+        rip_mode: "RipMode | None" = None,
     ) -> MoveResult:
         """Move a movie file to the Plex movies directory.
 
@@ -323,7 +351,7 @@ class FileMover:
             Given title="Inception", year=2010, the file will be moved to:
             {plex_movies_dir}/Inception (2010)/Inception (2010).mkv
         """
-        plex_dir = self.config.plex_movies_dir
+        plex_dir = self._get_output_directory(rip_mode)
 
         # Check Plex directory exists - this is retryable as the drive may be unmounted
         if not plex_dir.exists():
