@@ -32,6 +32,9 @@ class Config:
     drive_poll_interval: float = 5.0
     auto_approve_threshold: float = DEFAULT_AUTO_APPROVE_THRESHOLD
     drive_ids: list[str] = field(default_factory=lambda: ["0", "1"])
+    google_sheets_credentials_file: Path | None = None
+    google_sheets_spreadsheet_id: str | None = None
+    sheets_sync_interval: int = 24  # hours
 
     def __post_init__(self) -> None:
         """Validate configuration values."""
@@ -74,6 +77,10 @@ def load_config() -> Config:
     drive_ids_str = os.getenv("DRIVE_IDS", "0,1")
     drive_ids = [d.strip() for d in drive_ids_str.split(",") if d.strip()]
 
+    # Google Sheets config
+    sheets_creds = os.getenv("GOOGLE_SHEETS_CREDENTIALS_FILE")
+    sheets_creds_path = Path(sheets_creds).expanduser() if sheets_creds else None
+
     return Config(
         pushover_user_key=os.getenv("PUSHOVER_USER_KEY", ""),
         pushover_api_token=os.getenv("PUSHOVER_API_TOKEN", ""),
@@ -90,4 +97,7 @@ def load_config() -> Config:
         drive_poll_interval=float(os.getenv("DRIVE_POLL_INTERVAL", "5.0")),
         auto_approve_threshold=auto_threshold,
         drive_ids=drive_ids,
+        google_sheets_credentials_file=sheets_creds_path,
+        google_sheets_spreadsheet_id=os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID"),
+        sheets_sync_interval=int(os.getenv("SHEETS_SYNC_INTERVAL", "24")),
     )
