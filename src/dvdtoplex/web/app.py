@@ -81,6 +81,12 @@ class ActiveModeRequest(BaseModel):
     active_mode: bool
 
 
+class RipModeRequest(BaseModel):
+    """Request body for rip mode selection."""
+
+    mode: str
+
+
 class IdentifyRequest(BaseModel):
     """Request body for job identification update."""
 
@@ -157,6 +163,11 @@ def create_app(
 
         Shows active mode toggle, drive status, and recent jobs.
         """
+        # Get current rip mode
+        current_mode = "movie"
+        if app.state.database is not None:
+            current_mode = await app.state.database.get_setting("current_mode") or "movie"
+
         # Fetch recent jobs from database if available
         if app.state.database is not None:
             db_jobs = await app.state.database.get_recent_jobs(20, exclude_archived=True)
@@ -167,6 +178,8 @@ def create_app(
                     "status": job.status.value,
                     "identified_title": job.identified_title,
                     "identified_year": job.identified_year,
+                    "content_type": job.content_type.value if job.content_type else None,
+                    "rip_mode": job.rip_mode.value if job.rip_mode else "movie",
                     "updated_at": job.updated_at.isoformat() if job.updated_at else None,
                     "file_size": get_job_file_size(job.id, job.status.value, app.state.config) if app.state.config else None,
                 }
@@ -205,6 +218,7 @@ def create_app(
             {
                 "request": request,
                 "active_mode": app.state.active_mode,
+                "current_mode": current_mode,
                 "drives": drives,
                 "recent_jobs": recent_jobs,
             },
@@ -236,6 +250,43 @@ def create_app(
             }
         )
 
+    @app.get("/api/mode")
+    async def get_current_mode() -> JSONResponse:
+        """Get the current ripping mode.
+
+        Returns:
+            JSON with current mode.
+        """
+        if app.state.database is None:
+            return JSONResponse(content={"mode": "movie"})
+
+        mode = await app.state.database.get_setting("current_mode")
+        return JSONResponse(content={"mode": mode or "movie"})
+
+    @app.post("/api/mode")
+    async def set_current_mode(body: RipModeRequest) -> JSONResponse:
+        """Set the current ripping mode.
+
+        Args:
+            body: JSON body with 'mode' key.
+
+        Returns:
+            JSON with success status.
+        """
+        mode = body.mode
+        valid_modes = {"movie", "tv", "home_movies", "other"}
+
+        if mode not in valid_modes:
+            return JSONResponse(
+                content={"detail": f"Invalid mode. Must be one of: {valid_modes}"},
+                status_code=400,
+            )
+
+        if app.state.database is not None:
+            await app.state.database.set_setting("current_mode", mode)
+
+        return JSONResponse(content={"success": True, "mode": mode})
+
     @app.get("/review", response_class=HTMLResponse)
     async def review(request: Request) -> HTMLResponse:
         """Render the review queue page.
@@ -264,6 +315,7 @@ def create_app(
                     "identified_year": job.identified_year,
                     "confidence": job.confidence,
                     "content_type": job.content_type.value if job.content_type else None,
+                    "rip_mode": job.rip_mode.value if job.rip_mode else "movie",
                     "screenshots": screenshots,
                     "poster_url": f"https://image.tmdb.org/t/p/w200{job.poster_path}" if job.poster_path else None,
                     "updated_at": job.updated_at.isoformat() if job.updated_at else None,
@@ -334,18 +386,19 @@ def create_app(
 
     # API endpoints for review page actions
     @app.post("/api/jobs/{job_id}/approve")
-    async def approve_job(job_id: int) -> JSONResponse:
+    async def approve_job(job_id: int, request: Request) -> JSONResponse:
         """Approve a job's identification and move to MOVING status.
 
         Args:
             job_id: The ID of the job to approve.
+            request: Optional JSON body with 'mode' to override rip_mode.
 
         Returns:
             JSON response with success status.
         """
         # Use database if available
         if app.state.database is not None:
-            from dvdtoplex.database import JobStatus
+            from dvdtoplex.database import JobStatus, RipMode
 
             job = await app.state.database.get_job(job_id)
             if job is None:
@@ -360,6 +413,20 @@ def create_app(
                     },
                     status_code=400,
                 )
+
+            # Check for mode override in request body
+            try:
+                body = await request.json()
+                mode_str = body.get("mode")
+                if mode_str:
+                    try:
+                        new_mode = RipMode(mode_str)
+                        await app.state.database.update_job_rip_mode(job_id, new_mode)
+                    except ValueError:
+                        pass  # Invalid mode, ignore
+            except Exception:
+                pass  # No body or invalid JSON, proceed without mode change
+
             await app.state.database.update_job_status(job_id, JobStatus.MOVING)
             return JSONResponse(
                 content={

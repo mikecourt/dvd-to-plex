@@ -9,6 +9,7 @@ from dvdtoplex.database import (
     ContentType,
     Database,
     JobStatus,
+    RipMode,
 )
 
 
@@ -49,6 +50,40 @@ class TestEnums:
         assert ContentType.UNKNOWN.value == "unknown"
         assert ContentType.MOVIE.value == "movie"
         assert ContentType.TV_SEASON.value == "tv_season"
+
+    def test_rip_mode_enum_exists(self) -> None:
+        """Test that RipMode enum exists with all modes."""
+        assert hasattr(RipMode, "MOVIE")
+        assert hasattr(RipMode, "TV")
+        assert hasattr(RipMode, "HOME_MOVIES")
+        assert hasattr(RipMode, "OTHER")
+        assert RipMode.MOVIE.value == "movie"
+        assert RipMode.TV.value == "tv"
+        assert RipMode.HOME_MOVIES.value == "home_movies"
+        assert RipMode.OTHER.value == "other"
+
+
+class TestJobRipMode:
+    """Tests for job rip_mode field."""
+
+    @pytest.mark.asyncio
+    async def test_job_has_rip_mode_field(self, db: Database) -> None:
+        """Test that Job model has rip_mode field."""
+        # Create job with explicit mode
+        job = await db.create_job("drive0", "TEST_DISC", rip_mode=RipMode.HOME_MOVIES)
+
+        retrieved_job = await db.get_job(job.id)
+        assert retrieved_job is not None
+        assert retrieved_job.rip_mode == RipMode.HOME_MOVIES
+
+    @pytest.mark.asyncio
+    async def test_job_default_rip_mode_is_movie(self, db: Database) -> None:
+        """Test that default rip_mode is MOVIE."""
+        job = await db.create_job("drive0", "TEST_DISC")
+
+        retrieved_job = await db.get_job(job.id)
+        assert retrieved_job is not None
+        assert retrieved_job.rip_mode == RipMode.MOVIE
 
 
 class TestDatabaseConnection:

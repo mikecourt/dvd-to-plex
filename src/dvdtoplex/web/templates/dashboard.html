@@ -31,6 +31,46 @@
     </div>
 </div>
 
+<!-- Mode Selector Card -->
+<div class="card mb-3">
+    <div class="card-header">
+        <span class="card-title">Ripping Mode</span>
+    </div>
+    <div class="card-body">
+        <div class="mode-selector" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button class="btn mode-btn {% if current_mode == 'movie' %}btn-primary{% else %}btn-secondary{% endif %}"
+                    onclick="setMode('movie')" data-mode="movie">
+                Movie
+            </button>
+            <button class="btn mode-btn {% if current_mode == 'tv' %}btn-primary{% else %}btn-secondary{% endif %}"
+                    onclick="setMode('tv')" data-mode="tv">
+                TV Show
+            </button>
+            <button class="btn mode-btn {% if current_mode == 'home_movies' %}btn-primary{% else %}btn-secondary{% endif %}"
+                    onclick="setMode('home_movies')" data-mode="home_movies">
+                Home Movies
+            </button>
+            <button class="btn mode-btn {% if current_mode == 'other' %}btn-primary{% else %}btn-secondary{% endif %}"
+                    onclick="setMode('other')" data-mode="other">
+                Other
+            </button>
+        </div>
+        <p class="text-muted" style="margin-top: 0.75rem; font-size: 0.9rem;">
+            <span id="mode-description">
+                {% if current_mode == 'movie' %}
+                Movies: TMDb search, saves to Movies folder
+                {% elif current_mode == 'tv' %}
+                TV: TMDb TV search, saves to TV Shows folder
+                {% elif current_mode == 'home_movies' %}
+                Home Movies: No TMDb, uses disc label, saves to Home Movies folder
+                {% else %}
+                Other: No TMDb, uses disc label, saves to Other folder
+                {% endif %}
+            </span>
+        </p>
+    </div>
+</div>
+
 <!-- Oversight Warning Banner -->
 <div id="oversight-warning" class="card mb-3" style="display: none; border-color: #f0ad4e; background-color: #fcf8e3;">
     <div class="card-header" style="background-color: #f0ad4e; color: #8a6d3b;">
@@ -83,6 +123,7 @@
                 <tr>
                     <th>Disc Label</th>
                     <th>Status</th>
+                    <th>Mode</th>
                     <th>Size</th>
                     <th>Identified As</th>
                     <th>Updated</th>
@@ -94,6 +135,19 @@
                 <tr data-job-id="{{ job.id }}">
                     <td>{{ job.disc_label }}</td>
                     <td><span class="status status-{{ job.status|lower }}">{{ job.status }}</span></td>
+                    <td>
+                        {% if job.rip_mode == 'movie' %}
+                            <span class="badge badge-movie">Movie</span>
+                        {% elif job.rip_mode == 'tv' %}
+                            <span class="badge badge-tv">TV</span>
+                        {% elif job.rip_mode == 'home_movies' %}
+                            <span class="badge badge-home">Home</span>
+                        {% elif job.rip_mode == 'other' %}
+                            <span class="badge badge-other">Other</span>
+                        {% else %}
+                            <span class="badge">--</span>
+                        {% endif %}
+                    </td>
                     <td class="text-muted">{{ job.file_size or '--' }}</td>
                     <td>
                         {% if job.identified_title %}
@@ -127,7 +181,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="6" class="text-muted" style="text-align: center;">No jobs yet</td>
+                    <td colspan="7" class="text-muted" style="text-align: center;">No jobs yet</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -252,6 +306,41 @@
         } catch (error) {
             console.error('Error archiving job:', error);
             alert('Failed to archive job');
+        }
+    }
+
+    async function setMode(mode) {
+        try {
+            const response = await fetch('/api/mode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: mode }),
+            });
+
+            if (response.ok) {
+                // Update button states
+                document.querySelectorAll('.mode-btn').forEach(btn => {
+                    btn.classList.remove('btn-primary');
+                    btn.classList.add('btn-secondary');
+                });
+                document.querySelector(`[data-mode="${mode}"]`).classList.remove('btn-secondary');
+                document.querySelector(`[data-mode="${mode}"]`).classList.add('btn-primary');
+
+                // Update description
+                const descriptions = {
+                    'movie': 'Movies: TMDb search, saves to Movies folder',
+                    'tv': 'TV: TMDb TV search, saves to TV Shows folder',
+                    'home_movies': 'Home Movies: No TMDb, uses disc label, saves to Home Movies folder',
+                    'other': 'Other: No TMDb, uses disc label, saves to Other folder'
+                };
+                document.getElementById('mode-description').textContent = descriptions[mode];
+            } else {
+                const data = await response.json();
+                alert(data.detail || 'Failed to set mode');
+            }
+        } catch (error) {
+            console.error('Error setting mode:', error);
+            alert('Failed to set mode');
         }
     }
 
