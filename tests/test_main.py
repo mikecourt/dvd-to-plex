@@ -59,3 +59,24 @@ async def test_shutdown_event_is_set_on_signal(config: Config) -> None:
     app._handle_shutdown_signal()
 
     assert app._shutdown_event.is_set()
+
+
+@pytest.mark.asyncio
+async def test_application_includes_sheets_sync_service(tmp_path, monkeypatch):
+    """Test Application includes SheetsSyncService when configured."""
+    monkeypatch.setenv("GOOGLE_SHEETS_CREDENTIALS_FILE", str(tmp_path / "creds.json"))
+    monkeypatch.setenv("GOOGLE_SHEETS_SPREADSHEET_ID", "test_id")
+
+    from dvdtoplex.config import load_config
+    from dvdtoplex.main import Application
+    from dvdtoplex.services.sheets_sync import SheetsSyncService
+
+    config = load_config()
+    config.workspace_dir = tmp_path / "workspace"
+    config.workspace_dir.mkdir()
+
+    app = Application(config)
+
+    # Check that SheetsSyncService is in the services list
+    service_types = [type(s).__name__ for s in app.services]
+    assert "SheetsSyncService" in service_types

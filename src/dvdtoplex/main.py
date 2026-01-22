@@ -15,6 +15,7 @@ from dvdtoplex.services.rip_queue import RipQueue
 from dvdtoplex.services.encode_queue import EncodeQueue
 from dvdtoplex.services.identifier import IdentifierService
 from dvdtoplex.services.file_mover import FileMover
+from dvdtoplex.services.sheets_sync import SheetsSyncService
 from dvdtoplex.services.oversight import startup_cleanup
 from dvdtoplex.web.app import create_app
 
@@ -93,7 +94,8 @@ class Application:
         encode_queue = EncodeQueue(self.config, self.database)
         identifier = IdentifierService(self.database, self.config)
         file_mover = FileMover(self.config, self.database)
-        self.services: list[Service] = [self.drive_watcher, rip_queue, encode_queue, identifier, file_mover]
+        sheets_sync = SheetsSyncService(self.config, self.database)
+        self.services: list[Service] = [self.drive_watcher, rip_queue, encode_queue, identifier, file_mover, sheets_sync]
 
     async def _ensure_directories(self) -> None:
         """Create workspace directories if they don't exist."""
