@@ -1,7 +1,11 @@
 """Tests for the MakeMKV wrapper."""
 
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from dvdtoplex.makemkv import (
+    check_disc_present,
     DiscReadError,
     MakeMKVError,
     RipError,
@@ -230,3 +234,48 @@ TINFO:0,9,0,"2:30:00"
 
         assert has_disc is True
         assert disc_label == "BLURAY_MOVIE"
+
+
+class TestCheckDiscPresent:
+    """Tests for check_disc_present async function."""
+
+    @pytest.mark.asyncio
+    async def test_returns_status_when_disc_present(self) -> None:
+        """Should return has_disc=True and label when disc is present."""
+        mock_output = '''DRV:0,2,999,1,"DVD+R DL","MOVIE_TITLE","/dev/disk4"
+'''
+        with patch("dvdtoplex.makemkv.asyncio.create_subprocess_exec") as mock_exec:
+            mock_proc = AsyncMock()
+            mock_proc.communicate.return_value = (mock_output.encode(), b"")
+            mock_exec.return_value = mock_proc
+
+            has_disc, label = await check_disc_present("0")
+
+            assert has_disc is True
+            assert label == "MOVIE_TITLE"
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_no_disc(self) -> None:
+        """Should return has_disc=False when no disc is present."""
+        mock_output = '''DRV:0,256,999,0,"","",""
+'''
+        with patch("dvdtoplex.makemkv.asyncio.create_subprocess_exec") as mock_exec:
+            mock_proc = AsyncMock()
+            mock_proc.communicate.return_value = (mock_output.encode(), b"")
+            mock_exec.return_value = mock_proc
+
+            has_disc, label = await check_disc_present("0")
+
+            assert has_disc is False
+            assert label is None
+
+    @pytest.mark.asyncio
+    async def test_handles_exception(self) -> None:
+        """Should return False on error."""
+        with patch("dvdtoplex.makemkv.asyncio.create_subprocess_exec") as mock_exec:
+            mock_exec.side_effect = Exception("Process failed")
+
+            has_disc, label = await check_disc_present("0")
+
+            assert has_disc is False
+            assert label is None

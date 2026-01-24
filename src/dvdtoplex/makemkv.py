@@ -233,6 +233,36 @@ def parse_disc_info(output: str) -> tuple[bool, str | None]:
     return False, None
 
 
+async def check_disc_present(drive_id: str) -> tuple[bool, str | None]:
+    """Check if a disc is present in the specified drive using MakeMKV.
+
+    Args:
+        drive_id: Drive ID (0-based index or device path).
+
+    Returns:
+        Tuple of (has_disc, disc_label).
+    """
+    try:
+        # Format source for MakeMKV
+        source = f"disc:{drive_id}" if drive_id.isdigit() else f"dev:{drive_id}"
+
+        proc = await asyncio.create_subprocess_exec(
+            MAKEMKV_PATH,
+            "info",
+            source,
+            "-r",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await proc.communicate()
+        output = stdout.decode("utf-8", errors="replace")
+
+        return parse_disc_info(output)
+    except Exception as e:
+        logger.error(f"Error checking disc in drive {drive_id}: {e}")
+        return False, None
+
+
 def _drutil_to_makemkv_id(drive_id: str) -> str:
     """Convert drutil drive ID (1-based) to MakeMKV drive ID (0-based).
 
