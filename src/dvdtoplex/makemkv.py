@@ -196,6 +196,43 @@ def parse_title_info(output: str) -> list[TitleInfo]:
     return sorted(result, key=lambda t: t.index)
 
 
+def parse_disc_info(output: str) -> tuple[bool, str | None]:
+    """Parse MakeMKV info output to detect disc presence and label.
+
+    The DRV line format is: DRV:index,flags,count,disc_type,"media_type","label","device"
+    - flags & 2 = disc present
+    - flags & 256 = no disc
+
+    Args:
+        output: Raw output from makemkvcon info command.
+
+    Returns:
+        Tuple of (has_disc, disc_label).
+    """
+    if not output.strip():
+        return False, None
+
+    for line in output.splitlines():
+        if not line.startswith("DRV:"):
+            continue
+
+        # Parse DRV line: DRV:index,flags,count,type,"media","label","device"
+        parts = line[4:].split(",", 6)
+        if len(parts) < 7:
+            continue
+
+        flags = int(parts[1])
+        # flags & 256 = no disc, flags & 2 = disc present
+        if flags & 256:
+            return False, None
+        if flags & 2:
+            # Label is the 6th field (index 5), quoted
+            label = parts[5].strip('"')
+            return True, label if label else None
+
+    return False, None
+
+
 def _drutil_to_makemkv_id(drive_id: str) -> str:
     """Convert drutil drive ID (1-based) to MakeMKV drive ID (0-based).
 

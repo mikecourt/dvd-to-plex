@@ -5,6 +5,7 @@ from dvdtoplex.makemkv import (
     DiscReadError,
     MakeMKVError,
     RipError,
+    parse_disc_info,
     parse_duration,
     parse_size,
     parse_title_info,
@@ -179,3 +180,53 @@ class TestMakeMKVErrors:
         error = RipError("No output", device="/dev/disk3", title_index=0)
         assert error.details is None
         assert error.title_index == 0
+
+
+class TestParseDiscInfo:
+    """Tests for parse_disc_info function."""
+
+    def test_parse_disc_present_with_label(self) -> None:
+        """Should detect disc with label from MakeMKV output."""
+        output = '''DRV:0,2,999,1,"DVD+R DL","MOVIE_TITLE","/dev/disk4"
+TINFO:0,9,0,"1:45:30"
+'''
+        has_disc, disc_label = parse_disc_info(output)
+
+        assert has_disc is True
+        assert disc_label == "MOVIE_TITLE"
+
+    def test_parse_no_disc(self) -> None:
+        """Should detect when no disc is present."""
+        output = '''DRV:0,256,999,0,"","",""
+'''
+        has_disc, disc_label = parse_disc_info(output)
+
+        assert has_disc is False
+        assert disc_label is None
+
+    def test_parse_disc_without_label(self) -> None:
+        """Should handle disc present but no label."""
+        output = '''DRV:0,2,999,1,"BD-ROM","","/dev/disk4"
+TINFO:0,9,0,"2:00:00"
+'''
+        has_disc, disc_label = parse_disc_info(output)
+
+        assert has_disc is True
+        assert disc_label is None
+
+    def test_parse_empty_output(self) -> None:
+        """Should handle empty output."""
+        has_disc, disc_label = parse_disc_info("")
+
+        assert has_disc is False
+        assert disc_label is None
+
+    def test_parse_bluray_disc(self) -> None:
+        """Should detect Blu-ray disc with label."""
+        output = '''DRV:0,2,999,12,"BD-ROM","BLURAY_MOVIE","/dev/disk4"
+TINFO:0,9,0,"2:30:00"
+'''
+        has_disc, disc_label = parse_disc_info(output)
+
+        assert has_disc is True
+        assert disc_label == "BLURAY_MOVIE"
