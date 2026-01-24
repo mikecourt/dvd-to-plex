@@ -29,7 +29,7 @@ class Config:
     web_host: str = "127.0.0.1"
     web_port: int = 8080
     active_mode: bool = False
-    drive_poll_interval: float = 5.0
+    drive_poll_interval: float = 15.0
     auto_approve_threshold: float = DEFAULT_AUTO_APPROVE_THRESHOLD
     drive_ids: list[str] = field(default_factory=lambda: ["0", "1"])
     google_sheets_credentials_file: Path | None = None
@@ -94,7 +94,7 @@ def load_config() -> Config:
         web_host=os.getenv("WEB_HOST", "127.0.0.1"),
         web_port=int(os.getenv("WEB_PORT", "8080")),
         active_mode=os.getenv("ACTIVE_MODE", "false").lower() == "true",
-        drive_poll_interval=float(os.getenv("DRIVE_POLL_INTERVAL", "5.0")),
+        drive_poll_interval=float(os.getenv("DRIVE_POLL_INTERVAL", "15.0")),
         auto_approve_threshold=auto_threshold,
         drive_ids=drive_ids,
         google_sheets_credentials_file=sheets_creds_path,

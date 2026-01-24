@@ -20,7 +20,7 @@ class TestConfig:
         assert config.tmdb_api_token == ""
         assert config.web_host == "127.0.0.1"
         assert config.web_port == 8080
-        assert config.drive_poll_interval == 5.0
+        assert config.drive_poll_interval == 15.0
         assert config.auto_approve_threshold == DEFAULT_AUTO_APPROVE_THRESHOLD
 
     def test_auto_approve_threshold_default(self) -> None:
