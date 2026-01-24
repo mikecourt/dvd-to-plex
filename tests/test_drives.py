@@ -1,82 +1,49 @@
 """Tests for the drive detection module."""
 
+from unittest.mock import AsyncMock, patch
 
-from dvdtoplex.drives import parse_drutil_output
+import pytest
+
+from dvdtoplex.drives import get_drive_status
 
 
-class TestParseDrutilOutput:
-    """Tests for parse_drutil_output function."""
+class TestGetDriveStatusMakeMKV:
+    """Tests for MakeMKV-based get_drive_status function."""
 
-    def test_parse_with_disc(self) -> None:
-        """Should detect disc present with vendor and label."""
-        output = """Vendor: MATSHITA
-Product: DVD-R UJ-868
-Revision: KB17
-Type: CD-ROM
-Media Inserted: Yes
-Name: MY_DVD_MOVIE
-"""
-        vendor, has_disc, disc_label = parse_drutil_output(output)
+    @pytest.mark.asyncio
+    async def test_returns_status_with_disc(self) -> None:
+        """Should return DriveStatus with disc info from MakeMKV."""
+        with patch("dvdtoplex.drives.check_disc_present") as mock_check:
+            mock_check.return_value = (True, "MOVIE_TITLE")
 
-        assert vendor == "MATSHITA"
-        assert has_disc is True
-        assert disc_label == "MY_DVD_MOVIE"
+            status = await get_drive_status("0")
 
-    def test_parse_without_disc(self) -> None:
-        """Should detect when no disc is inserted."""
-        output = """Vendor: MATSHITA
-Product: DVD-R UJ-868
-Revision: KB17
-No Media Inserted
-"""
-        vendor, has_disc, disc_label = parse_drutil_output(output)
+            assert status.drive_id == "0"
+            assert status.has_disc is True
+            assert status.disc_label == "MOVIE_TITLE"
+            mock_check.assert_called_once_with("0")
 
-        assert vendor == "MATSHITA"
-        assert has_disc is False
-        assert disc_label is None
+    @pytest.mark.asyncio
+    async def test_returns_status_without_disc(self) -> None:
+        """Should return DriveStatus without disc."""
+        with patch("dvdtoplex.drives.check_disc_present") as mock_check:
+            mock_check.return_value = (False, None)
 
-    def test_parse_no_disc_alternate(self) -> None:
-        """Should handle alternate 'No disc inserted' message."""
-        output = """Vendor: LG
-Product: GDR-8163B
-No disc inserted
-"""
-        vendor, has_disc, disc_label = parse_drutil_output(output)
+            status = await get_drive_status("1")
 
-        assert vendor == "LG"
-        assert has_disc is False
-        assert disc_label is None
+            assert status.drive_id == "1"
+            assert status.has_disc is False
+            assert status.disc_label is None
 
-    def test_parse_empty_output(self) -> None:
-        """Should handle empty output."""
-        vendor, has_disc, disc_label = parse_drutil_output("")
+    @pytest.mark.asyncio
+    async def test_handles_device_path(self) -> None:
+        """Should handle device path format."""
+        with patch("dvdtoplex.drives.check_disc_present") as mock_check:
+            mock_check.return_value = (True, "BLURAY_DISC")
 
-        assert vendor == ""
-        assert has_disc is False
-        assert disc_label is None
+            status = await get_drive_status("/dev/disk4")
 
-    def test_parse_disc_with_media_type(self) -> None:
-        """Should detect disc when Type and Media are present."""
-        output = """Vendor: PIONEER
-Product: DVD-RW DVR-111D
-Type: DVD-ROM
-Media: DVD-ROM
-Name: MOVIE_TITLE_2024
-"""
-        vendor, has_disc, disc_label = parse_drutil_output(output)
-
-        assert vendor == "PIONEER"
-        assert has_disc is True
-        assert disc_label == "MOVIE_TITLE_2024"
-
-    def test_parse_disc_with_special_characters(self) -> None:
-        """Should handle disc labels with special characters."""
-        output = """Vendor: MATSHITA
-Type: DVD-ROM
-Media: DVD-ROM
-Name: MOVIE_PART_1_DISC_A
-"""
-        vendor, has_disc, disc_label = parse_drutil_output(output)
-
-        assert has_disc is True
-        assert disc_label == "MOVIE_PART_1_DISC_A"
+            assert status.drive_id == "/dev/disk4"
+            assert status.has_disc is True
+            assert status.disc_label == "BLURAY_DISC"
+            mock_check.assert_called_once_with("/dev/disk4")
