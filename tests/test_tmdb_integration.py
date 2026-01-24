@@ -105,8 +105,8 @@ class TestTMDbIntegration:
             details = await client.get_movie_details(603)
 
             assert details is not None, "Expected movie details for The Matrix"
-            assert details.get("title") == "The Matrix"
-            print(f"Movie details: {details.get('title')} ({details.get('release_date', '')[:4]})")
+            assert details.title == "The Matrix"
+            print(f"Movie details: {details.title} ({details.year})")
 
 
 class TestTMDbWithoutCredentials:

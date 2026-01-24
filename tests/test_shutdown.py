@@ -223,7 +223,7 @@ class TestApplication:
             await app.start_services()
 
             # Verify services are running
-            assert len(app.services) == 4
+            assert len(app.services) == 6
             for service in app.services:
                 assert service.is_running
 
