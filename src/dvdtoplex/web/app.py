@@ -102,6 +102,7 @@ class WantedRequest(BaseModel):
     year: int | None = None
     content_type: str = "movie"
     tmdb_id: int | None = None
+    poster_path: str | None = None
     notes: str | None = None
 
 
@@ -852,6 +853,7 @@ def create_app(
             "year": body.year,
             "content_type": body.content_type,
             "tmdb_id": body.tmdb_id,
+            "poster_path": body.poster_path,
             "notes": body.notes,
             "added_at": datetime.now().isoformat(),
         }
@@ -867,6 +869,7 @@ def create_app(
                 "year": body.year,
                 "content_type": body.content_type,
                 "tmdb_id": body.tmdb_id,
+                "poster_path": body.poster_path,
                 "notes": body.notes,
             }
         )

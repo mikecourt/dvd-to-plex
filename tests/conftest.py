@@ -42,6 +42,9 @@ class Config:
     web_port: int = 8080
     drive_poll_interval: float = 5.0
     auto_approve_threshold: float = 0.85
+    google_sheets_credentials_file: Path | None = None
+    google_sheets_spreadsheet_id: str | None = None
+    sheets_sync_interval: int = 24
 
     @property
     def staging_dir(self) -> Path:

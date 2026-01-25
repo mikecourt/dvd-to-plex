@@ -121,6 +121,7 @@ class WantedItem:
     year: int | None
     content_type: ContentType
     tmdb_id: int | None
+    poster_path: str | None
     notes: str | None
     added_at: datetime
 
@@ -248,6 +249,7 @@ class Database:
                 year INTEGER,
                 content_type TEXT NOT NULL DEFAULT 'movie',
                 tmdb_id INTEGER,
+                poster_path TEXT,
                 notes TEXT,
                 added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
@@ -275,6 +277,17 @@ class Database:
         if "rip_mode" not in column_names:
             await self.connection.execute(
                 "ALTER TABLE jobs ADD COLUMN rip_mode TEXT NOT NULL DEFAULT 'movie'"
+            )
+            await self.connection.commit()
+
+        # Check if poster_path column exists in wanted table
+        cursor = await self.connection.execute("PRAGMA table_info(wanted)")
+        columns = await cursor.fetchall()
+        wanted_column_names = {col["name"] for col in columns}
+
+        if "poster_path" not in wanted_column_names:
+            await self.connection.execute(
+                "ALTER TABLE wanted ADD COLUMN poster_path TEXT"
             )
             await self.connection.commit()
 
@@ -868,6 +881,7 @@ class Database:
         year: int | None = None,
         content_type: ContentType | str = ContentType.MOVIE,
         tmdb_id: int | None = None,
+        poster_path: str | None = None,
         notes: str | None = None,
     ) -> int:
         """Add an item to the wanted list.
@@ -877,6 +891,7 @@ class Database:
             year: Optional release year.
             content_type: Type of content (string or ContentType enum).
             tmdb_id: Optional TMDb ID.
+            poster_path: Optional TMDb poster path (e.g., "/abc123.jpg").
             notes: Optional notes.
 
         Returns:
@@ -888,10 +903,10 @@ class Database:
         )
         cursor = await self.connection.execute(
             """
-            INSERT INTO wanted (title, year, content_type, tmdb_id, notes)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO wanted (title, year, content_type, tmdb_id, poster_path, notes)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (title, year, content_type_value, tmdb_id, notes),
+            (title, year, content_type_value, tmdb_id, poster_path, notes),
         )
         await self.connection.commit()
         return cursor.lastrowid or 0
@@ -913,6 +928,7 @@ class Database:
                 year=row["year"],
                 content_type=ContentType(row["content_type"]),
                 tmdb_id=row["tmdb_id"],
+                poster_path=row["poster_path"],
                 notes=row["notes"],
                 added_at=datetime.fromisoformat(row["added_at"]),
             )
@@ -940,6 +956,7 @@ class Database:
             year=row["year"],
             content_type=ContentType(row["content_type"]),
             tmdb_id=row["tmdb_id"],
+            poster_path=row["poster_path"],
             notes=row["notes"],
             added_at=datetime.fromisoformat(row["added_at"]),
         )

@@ -212,6 +212,26 @@ class TestAddToWanted:
         assert item["tmdb_id"] == 99999
         assert "added_at" in item
 
+    def test_add_wanted_stores_poster_path(self, client: TestClient) -> None:
+        """Test adding wanted item stores poster_path."""
+        response = client.post(
+            "/api/wanted",
+            json={
+                "title": "Dune",
+                "year": 2021,
+                "content_type": "movie",
+                "tmdb_id": 438631,
+                "poster_path": "/abc123.jpg",
+            },
+        )
+
+        assert response.status_code == 200
+
+        # Verify poster_path was stored in app state
+        assert len(client.app.state.wanted) == 1
+        item = client.app.state.wanted[0]
+        assert item.get("poster_path") == "/abc123.jpg"
+
 
 class TestDeleteFromWanted:
     """Tests for DELETE /api/wanted/{id} endpoint."""

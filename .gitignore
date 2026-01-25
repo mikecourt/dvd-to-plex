@@ -36,3 +36,6 @@ dvdtoplex.db
 .coverage
 htmlcov/
 .mypy_cache/
+
+# Worktrees
+.worktrees/

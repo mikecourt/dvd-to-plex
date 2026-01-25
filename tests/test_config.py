@@ -20,7 +20,7 @@ class TestConfig:
         assert config.tmdb_api_token == ""
         assert config.web_host == "127.0.0.1"
         assert config.web_port == 8080
-        assert config.drive_poll_interval == 5.0
+        assert config.drive_poll_interval == 15.0
         assert config.auto_approve_threshold == DEFAULT_AUTO_APPROVE_THRESHOLD
 
     def test_auto_approve_threshold_default(self) -> None:
@@ -135,3 +135,32 @@ class TestLoadConfig:
         monkeypatch.setenv("PLEX_OTHER_DIR", "/test/other")
         config = load_config()
         assert config.plex_other_dir == Path("/test/other")
+
+    def test_google_sheets_config_from_env(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Test Google Sheets config loads from environment."""
+        creds_file = tmp_path / "creds.json"
+        creds_file.write_text("{}")
+
+        monkeypatch.setenv("GOOGLE_SHEETS_CREDENTIALS_FILE", str(creds_file))
+        monkeypatch.setenv("GOOGLE_SHEETS_SPREADSHEET_ID", "test_spreadsheet_id")
+        monkeypatch.setenv("SHEETS_SYNC_INTERVAL", "12")
+
+        config = load_config()
+
+        assert config.google_sheets_credentials_file == creds_file
+        assert config.google_sheets_spreadsheet_id == "test_spreadsheet_id"
+        assert config.sheets_sync_interval == 12
+
+    def test_google_sheets_config_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test Google Sheets config has sensible defaults."""
+        monkeypatch.delenv("GOOGLE_SHEETS_CREDENTIALS_FILE", raising=False)
+        monkeypatch.delenv("GOOGLE_SHEETS_SPREADSHEET_ID", raising=False)
+        monkeypatch.delenv("SHEETS_SYNC_INTERVAL", raising=False)
+
+        config = load_config()
+
+        assert config.google_sheets_credentials_file is None
+        assert config.google_sheets_spreadsheet_id is None
+        assert config.sheets_sync_interval == 24

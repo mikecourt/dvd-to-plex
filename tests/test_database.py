@@ -533,6 +533,31 @@ class TestWantedOperations:
         assert result is False
 
 
+@pytest.mark.asyncio
+async def test_wanted_item_stores_poster_path(tmp_path):
+    """Test wanted items can store poster_path."""
+    from dvdtoplex.database import Database, ContentType
+
+    db = Database(tmp_path / "test.db")
+    await db.connect()
+
+    try:
+        item_id = await db.add_to_wanted(
+            title="Dune",
+            year=2021,
+            content_type=ContentType.MOVIE,
+            tmdb_id=438631,
+            poster_path="/abc123.jpg",
+        )
+
+        item = await db.get_wanted_item(item_id)
+
+        assert item is not None
+        assert item.poster_path == "/abc123.jpg"
+    finally:
+        await db.close()
+
+
 class TestSettingsOperations:
     """Tests for settings CRUD operations."""
 
