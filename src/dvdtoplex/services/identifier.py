@@ -18,6 +18,31 @@ logger = logging.getLogger(__name__)
 # Re-export for convenience
 DEFAULT_AUTO_APPROVE_THRESHOLD = DEFAULT_AUTO_APPROVE_THRESHOLD
 
+# Generic disc labels that shouldn't be used for TMDb search
+GENERIC_DISC_LABELS = {
+    "dvd_video",
+    "dvd video",
+    "unknown",
+    "unknown_disc",
+    "unknown disc",
+    "new",
+    "new_disc",
+    "new disc",
+}
+
+
+def is_generic_disc_label(disc_label: str) -> bool:
+    """Check if a disc label is a generic placeholder.
+
+    Args:
+        disc_label: Raw disc label.
+
+    Returns:
+        True if the label is generic and shouldn't be used for TMDb search.
+    """
+    cleaned = disc_label.strip().lower()
+    return cleaned in GENERIC_DISC_LABELS
+
 
 def calculate_title_similarity(query: str, title: str) -> float:
     """Calculate similarity score between query and title.
@@ -362,6 +387,41 @@ class IdentifierService:
         Returns:
             IdentificationResult. If no matches, returns UNKNOWN with tmdb_id=None.
         """
+        # Check if disc label is generic (skip TMDb search, go straight to AI)
+        if is_generic_disc_label(disc_label):
+            logger.info(f"Generic disc label '{disc_label}', skipping TMDb search")
+            if screenshot_paths and self.config.anthropic_api_key:
+                ai_result = await identify_with_ai(
+                    disc_label, screenshot_paths, self.config.anthropic_api_key
+                )
+                if ai_result and ai_result.title:
+                    # AI found something - search TMDb with AI's suggestion
+                    async with TMDbClient(self.config.tmdb_api_token) as client:
+                        ai_search = await client.search_movie(
+                            ai_result.title, ai_result.year
+                        )
+                        if ai_search:
+                            return IdentificationResult(
+                                content_type=ContentType.MOVIE,
+                                title=ai_search[0].title,
+                                year=ai_search[0].year,
+                                tmdb_id=ai_search[0].tmdb_id,
+                                confidence=ai_result.confidence,
+                                needs_review=ai_result.confidence < self.config.auto_approve_threshold,
+                                alternatives=ai_search[1:5],
+                                poster_path=ai_search[0].poster_path,
+                            )
+            # No AI result or no screenshots - needs manual review
+            return IdentificationResult(
+                content_type=ContentType.UNKNOWN,
+                title="",
+                year=None,
+                tmdb_id=None,  # type: ignore[arg-type]
+                confidence=0.0,
+                needs_review=True,
+                alternatives=[],
+            )
+
         # Clean the disc label for searching
         cleaned = clean_disc_label(disc_label)
         logger.debug(f"Cleaned disc label: '{disc_label}' -> '{cleaned}'")
