@@ -177,6 +177,7 @@ def create_app(
                     "id": job.id,
                     "disc_label": job.disc_label,
                     "status": job.status.value,
+                    "drive_id": job.drive_id,
                     "identified_title": job.identified_title,
                     "identified_year": job.identified_year,
                     "content_type": job.content_type.value if job.content_type else None,
