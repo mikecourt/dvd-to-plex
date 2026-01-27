@@ -150,6 +150,10 @@ class RipQueue:
             # Update status to ripping
             await self.database.update_job_status(job_id, JobStatus.RIPPING)
 
+            # Wait for disc to spin up and be ready before reading
+            logger.debug(f"Waiting for disc to be ready in drive {drive_id}")
+            await asyncio.sleep(8)
+
             # Get disc info (raises DiscReadError with details if no titles found)
             titles = await get_disc_info(drive_id)
 

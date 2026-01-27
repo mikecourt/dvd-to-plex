@@ -201,16 +201,20 @@ def create_app(
         for i, (drive_id, drive_name) in enumerate(drive_config):
             status = await get_drive_status(drive_id)
             # Check if this drive has an active ripping job
-            processing = any(
-                job.get("status") == "ripping" and job.get("disc_label") == status.disc_label
-                for job in recent_jobs
+            ripping_job = next(
+                (job for job in recent_jobs
+                 if job.get("status") == "ripping" and job.get("drive_id") == drive_id),
+                None
             )
+            processing = ripping_job is not None
+            # Use job's disc label if drive status timed out during rip
+            disc_label = status.disc_label or (ripping_job.get("disc_label") if ripping_job else None)
             drives.append({
                 "id": i,
                 "name": drive_name,
-                "has_disc": status.has_disc,
+                "has_disc": status.has_disc or processing,  # Show disc present if ripping
                 "processing": processing,
-                "disc_label": status.disc_label,
+                "disc_label": disc_label,
                 "status": "ripping" if processing else None,
             })
 
@@ -377,11 +381,30 @@ def create_app(
 
         Shows titles the user is searching for.
         """
+        # Fetch from database if available
+        if app.state.database is not None:
+            db_items = await app.state.database.get_wanted()
+            items = [
+                {
+                    "id": item.id,
+                    "title": item.title,
+                    "year": item.year,
+                    "content_type": item.content_type.value,
+                    "tmdb_id": item.tmdb_id,
+                    "poster_path": item.poster_path,
+                    "notes": item.notes,
+                    "added_at": item.added_at.isoformat() if item.added_at else None,
+                }
+                for item in db_items
+            ]
+        else:
+            items = app.state.wanted
+
         return templates.TemplateResponse(
             "wanted.html",
             {
                 "request": request,
-                "items": app.state.wanted,
+                "items": items,
             },
         )
 
@@ -804,9 +827,40 @@ def create_app(
         )
 
     # API endpoints for wanted list
+    @app.get("/api/wanted")
+    async def get_wanted_list() -> JSONResponse:
+        """Get all items in the wanted list.
+
+        Returns:
+            JSON response with list of wanted items.
+        """
+        # Use database if available
+        if app.state.database is not None:
+            db_items = await app.state.database.get_wanted()
+            items = [
+                {
+                    "id": item.id,
+                    "title": item.title,
+                    "year": item.year,
+                    "content_type": item.content_type.value,
+                    "tmdb_id": item.tmdb_id,
+                    "poster_path": item.poster_path,
+                    "notes": item.notes,
+                    "added_at": item.added_at.isoformat() if item.added_at else None,
+                }
+                for item in db_items
+            ]
+        else:
+            items = app.state.wanted
+
+        return JSONResponse(content={"success": True, "items": items})
+
     @app.post("/api/wanted")
     async def add_wanted(body: WantedRequest) -> JSONResponse:
         """Add an item to the wanted list.
+
+        Automatically enriches items with year and poster_path from TMDb
+        if not provided.
 
         Args:
             body: Request body containing title, year, content_type, tmdb_id, notes.
@@ -825,17 +879,106 @@ def create_app(
                 status_code=400,
             )
 
+        # Enrich with TMDb data if year or poster_path not provided
+        title = body.title
+        year = body.year
+        tmdb_id = body.tmdb_id
+        poster_path = body.poster_path
+
+        if app.state.config and app.state.config.tmdb_api_token:
+            # Enrich if missing year, tmdb_id, or poster_path
+            if year is None or tmdb_id is None or poster_path is None:
+                try:
+                    from dvdtoplex.tmdb import TMDbClient
+
+                    async with TMDbClient(app.state.config.tmdb_api_token) as tmdb:
+                        if body.content_type == "movie":
+                            results = await tmdb.search_movie(title, year)
+                        else:
+                            results = await tmdb.search_tv(title, year)
+
+                        if results:
+                            match = results[0]
+                            # Use TMDb data if not provided
+                            if body.content_type == "movie":
+                                if year is None:
+                                    year = match.year
+                                if tmdb_id is None:
+                                    tmdb_id = match.tmdb_id
+                                if poster_path is None:
+                                    poster_path = match.poster_path
+                                # Use official title from TMDb
+                                title = match.title
+                            else:
+                                if year is None:
+                                    year = match.year
+                                if tmdb_id is None:
+                                    tmdb_id = match.tmdb_id
+                                if poster_path is None:
+                                    poster_path = match.poster_path
+                                title = match.name
+                            logger.info(
+                                f"Enriched '{body.title}' from TMDb: {title} ({year})"
+                            )
+                except Exception as e:
+                    logger.warning(f"TMDb enrichment failed for '{body.title}': {e}")
+
+        # Use database if available
+        if app.state.database is not None:
+            from dvdtoplex.database import ContentType
+
+            # Check for duplicate tmdb_id in database
+            if tmdb_id is not None:
+                existing = await app.state.database.get_wanted()
+                for item in existing:
+                    if (
+                        item.tmdb_id == tmdb_id
+                        and item.content_type.value == body.content_type
+                    ):
+                        return JSONResponse(
+                            content={
+                                "success": False,
+                                "error": f"Item with tmdb_id {tmdb_id} already exists",
+                            },
+                            status_code=400,
+                        )
+
+            # Add to database
+            content_type = ContentType(body.content_type)
+            new_id = await app.state.database.add_to_wanted(
+                title=title,
+                year=year,
+                content_type=content_type,
+                tmdb_id=tmdb_id,
+                poster_path=poster_path,
+                notes=body.notes,
+            )
+
+            return JSONResponse(
+                content={
+                    "success": True,
+                    "id": new_id,
+                    "title": title,
+                    "year": year,
+                    "content_type": body.content_type,
+                    "tmdb_id": tmdb_id,
+                    "poster_path": poster_path,
+                    "notes": body.notes,
+                }
+            )
+
+        # Fall back to in-memory state
         # Check for duplicate tmdb_id + content_type
-        if body.tmdb_id is not None:
+        if tmdb_id is not None:
             for item in app.state.wanted:
                 if (
-                    item.get("tmdb_id") == body.tmdb_id
+                    item.get("tmdb_id") == tmdb_id
                     and item.get("content_type") == body.content_type
                 ):
                     return JSONResponse(
                         content={
                             "success": False,
-                            "error": f"Item with tmdb_id {body.tmdb_id} already exists",
+                            "error": f"Item with tmdb_id {tmdb_id} already exists",
                         },
                         status_code=400,
                     )
@@ -849,11 +992,11 @@ def create_app(
         # Create the new item
         new_item: dict[str, Any] = {
             "id": new_id,
-            "title": body.title,
-            "year": body.year,
+            "title": title,
+            "year": year,
             "content_type": body.content_type,
-            "tmdb_id": body.tmdb_id,
-            "poster_path": body.poster_path,
+            "tmdb_id": tmdb_id,
+            "poster_path": poster_path,
             "notes": body.notes,
             "added_at": datetime.now().isoformat(),
         }
@@ -865,11 +1008,11 @@ def create_app(
             content={
                 "success": True,
                 "id": new_id,
-                "title": body.title,
-                "year": body.year,
+                "title": title,
+                "year": year,
                 "content_type": body.content_type,
-                "tmdb_id": body.tmdb_id,
-                "poster_path": body.poster_path,
+                "tmdb_id": tmdb_id,
+                "poster_path": poster_path,
                 "notes": body.notes,
             }
         )
@@ -884,6 +1027,19 @@ def create_app(
         Returns:
             JSON response with success status.
         """
+        # Use database if available
+        if app.state.database is not None:
+            removed = await app.state.database.remove_from_wanted(item_id)
+            if removed:
+                return JSONResponse(
+                    content={"success": True, "wanted_id": item_id}
+                )
+            return JSONResponse(
+                content={"success": False, "error": "Wanted item not found"},
+                status_code=404,
+            )
+
+        # Fall back to in-memory state
         for i, wanted_item in enumerate(app.state.wanted):
             if wanted_item.get("id") == item_id:
                 app.state.wanted.pop(i)

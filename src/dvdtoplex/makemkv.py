@@ -196,7 +196,7 @@ def parse_title_info(output: str) -> list[TitleInfo]:
     return sorted(result, key=lambda t: t.index)
 
 
-def parse_disc_info(output: str) -> tuple[bool, str | None]:
+def parse_disc_info(output: str, drive_index: int | None = None) -> tuple[bool, str | None]:
     """Parse MakeMKV info output to detect disc presence and label.
 
     The DRV line format is: DRV:index,flags,count,disc_type,"media_type","label","device"
@@ -205,6 +205,8 @@ def parse_disc_info(output: str) -> tuple[bool, str | None]:
 
     Args:
         output: Raw output from makemkvcon info command.
+        drive_index: If specified, only check this specific drive index (0-based).
+                     If None, returns info for the first drive with a disc.
 
     Returns:
         Tuple of (has_disc, disc_label).
@@ -221,10 +223,18 @@ def parse_disc_info(output: str) -> tuple[bool, str | None]:
         if len(parts) < 7:
             continue
 
+        drv_index = int(parts[0])
+
+        # If a specific drive index is requested, only check that drive
+        if drive_index is not None and drv_index != drive_index:
+            continue
+
         flags = int(parts[1])
         # flags & 256 = no disc, flags & 2 = disc present
         if flags & 256:
-            return False, None
+            if drive_index is not None:
+                return False, None  # Specific drive has no disc
+            continue  # Keep looking for a drive with a disc
         if flags & 2:
             # Label is the 6th field (index 5), quoted
             label = parts[5].strip('"')
@@ -233,18 +243,21 @@ def parse_disc_info(output: str) -> tuple[bool, str | None]:
     return False, None
 
 
-async def check_disc_present(drive_id: str) -> tuple[bool, str | None]:
+async def check_disc_present(drive_id: str, timeout: float = 15.0) -> tuple[bool, str | None]:
     """Check if a disc is present in the specified drive using MakeMKV.
 
     Args:
-        drive_id: Drive ID (0-based index or device path).
+        drive_id: Device path or drutil drive number (1-based).
+        timeout: Maximum seconds to wait for MakeMKV response.
 
     Returns:
         Tuple of (has_disc, disc_label).
     """
+    proc = None
     try:
-        # Format source for MakeMKV
-        source = f"disc:{drive_id}" if drive_id.isdigit() else f"dev:{drive_id}"
+        # Convert drutil ID to MakeMKV ID and format source
+        mkv_id = _drutil_to_makemkv_id(drive_id)
+        source = f"disc:{mkv_id}" if mkv_id.isdigit() else f"dev:{mkv_id}"
 
         proc = await asyncio.create_subprocess_exec(
             MAKEMKV_PATH,
@@ -254,10 +267,18 @@ async def check_disc_present(drive_id: str) -> tuple[bool, str | None]:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, _ = await proc.communicate()
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         output = stdout.decode("utf-8", errors="replace")
 
-        return parse_disc_info(output)
+        # Parse disc info for the specific drive index
+        drive_index = int(mkv_id) if mkv_id.isdigit() else None
+        return parse_disc_info(output, drive_index=drive_index)
+    except asyncio.TimeoutError:
+        logger.warning(f"Timeout checking disc in drive {drive_id}")
+        if proc:
+            proc.kill()
+            await proc.wait()
+        return False, None
     except Exception as e:
         logger.error(f"Error checking disc in drive {drive_id}: {e}")
         return False, None
