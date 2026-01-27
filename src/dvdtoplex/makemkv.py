@@ -203,6 +203,10 @@ def parse_disc_info(output: str, drive_index: int | None = None) -> tuple[bool, 
     - flags & 2 = disc present
     - flags & 256 = no disc
 
+    Also checks CINFO lines for disc name if DRV label is empty.
+    CINFO format: CINFO:attribute_id,code,"value"
+    - attribute_id 2 = disc name/volume ID
+
     Args:
         output: Raw output from makemkvcon info command.
         drive_index: If specified, only check this specific drive index (0-based).
@@ -213,6 +217,18 @@ def parse_disc_info(output: str, drive_index: int | None = None) -> tuple[bool, 
     """
     if not output.strip():
         return False, None
+
+    # First, try to get disc name from CINFO lines (more reliable for disc label)
+    cinfo_name: str | None = None
+    for line in output.splitlines():
+        if line.startswith("CINFO:"):
+            # CINFO:attr_id,code,"value"
+            parts = line[6:].split(",", 2)
+            if len(parts) >= 3:
+                attr_id = int(parts[0])
+                if attr_id == 2:  # Disc name
+                    cinfo_name = parts[2].strip('"')
+                    break
 
     for line in output.splitlines():
         if not line.startswith("DRV:"):
@@ -238,7 +254,9 @@ def parse_disc_info(output: str, drive_index: int | None = None) -> tuple[bool, 
         if flags & 2:
             # Label is the 6th field (index 5), quoted
             label = parts[5].strip('"')
-            return True, label if label else None
+            # Use CINFO name as fallback if DRV label is empty
+            final_label = label if label else cinfo_name
+            return True, final_label if final_label else None
 
     return False, None
 
